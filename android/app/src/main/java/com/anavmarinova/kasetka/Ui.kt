@@ -92,6 +92,16 @@ private fun fmt(ms: Long): String {
     return "%02d:%02d".format(s / 60, s % 60)
 }
 
+private fun openListenerSettings(ctx: Context) {
+    val comp = ComponentName(ctx, KasetkaListener::class.java).flattenToString()
+    try {
+        ctx.startActivity(Intent(SysSettings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+            .putExtra(SysSettings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, comp))
+    } catch (e: Exception) {
+        ctx.startActivity(Intent(SysSettings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+    }
+}
+
 private fun openAppDetails(ctx: Context) {
     ctx.startActivity(Intent(SysSettings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}")))
 }
@@ -295,6 +305,16 @@ fun KasetkaApp(act: MainActivity) {
                     Column(Modifier.fillMaxSize()) {
                         TopBar(pal, onCover = { forceCover = true }, onSettings = { showSettings = true },
                             onAdd = { addDialog = AddState(null, "") })
+                        val ytmOk = remember(visible, s.useYtm) { Ytm.hasPermission(ctx) }
+                        if (s.useYtm && !ytmOk) Notice(pal, "Connect YouTube Music (Premium mode)",
+                            "To control YouTube Music, Kasetka needs Notification access. It doesn't read your notifications.") {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Chip(pal, "Allow access", primary = true) { openListenerSettings(ctx) }
+                                Chip(pal, "Switch greyed out?") { openAppDetails(ctx) }
+                            }
+                            Text("If the switch is greyed out: tap \"Switch greyed out?\", then ⋮ (top right) → Allow restricted settings, then try again.",
+                                color = pal.muted, fontSize = 12.sp)
+                        }
                         val shelf: @Composable (Modifier) -> Unit = { m ->
                             Shelf(tapes, insertedId, pal, m, onTap = { insert(it, false) },
                                 onLong = { addDialog = AddState(it, "") })
@@ -810,7 +830,7 @@ private fun AddTapeDialog(pal: Pal, st: AddState, onClose: () -> Unit) {
         }
         val p = parseLink(link)
         if (p.error != null) { err = p.error; return }
-        if (p.list == "LM" || p.list == "LL") {
+        if ((p.list == "LM" || p.list == "LL") && !Store.settings.value.useYtm) {
             err = "Liked Music only plays inside the YouTube Music app. Save those songs into a playlist and share that."; return
         }
         val autoName = name.isBlank() && p.list != "LM"
@@ -907,7 +927,14 @@ private fun SettingsDialog(pal: Pal, s: Settings, permission: Boolean, onClose: 
                         color = pal.text, fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 13.sp)
                 }
                 HorizontalDivider(color = pal.line)
-                Text("Songs play inside Kasetka with YouTube's player — it keeps going when the app is minimised, with controls on the lock screen.",
+                SetRow(pal, "Play through YouTube Music (Premium)",
+                    "Your account, no ads, Liked Music works. YouTube Music may flash up when a new tape starts.", s.useYtm) {
+                    set(s.copy(useYtm = it)); MediaHub.switchEngine(ctx)
+                    if (it && !Ytm.hasPermission(ctx)) openListenerSettings(ctx)
+                }
+                Text(if (s.useYtm) "YouTube Music plays your tapes; Kasetka is the remote. Notification access: " +
+                        (if (Ytm.hasPermission(ctx)) "on ✓" else "needed") else
+                    "Songs play inside Kasetka with YouTube's player — it keeps going when the app is minimised, with controls on the lock screen.",
                     color = pal.muted, fontSize = 12.sp)
                 HorizontalDivider(color = pal.line)
                 Text("Bring tapes from the web version", color = pal.text, fontWeight = FontWeight.Bold)

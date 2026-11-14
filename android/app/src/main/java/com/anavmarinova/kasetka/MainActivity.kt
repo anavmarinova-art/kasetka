@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         visible.value = true
         MediaHub.connect(this)
+        Ytm.connect(this)
     }
 
     override fun onStop() {

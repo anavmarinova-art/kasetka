@@ -117,6 +117,8 @@ data class Settings(
     val showPlayer: Boolean = false,
     /** When a tape ends, the next tape on the shelf starts by itself. */
     val autoNext: Boolean = true,
+    /** Premium mode: YouTube Music plays, Kasetka controls it. */
+    val useYtm: Boolean = false,
 ) {
     fun toJson() = JSONObject().apply {
         put("theme", theme); put("whimsy", whimsy); put("skin", skin)
@@ -125,6 +127,7 @@ data class Settings(
         put("hiss", hiss); put("clicks", clicks); put("haptics", haptics); put("stars", stars)
         put("showPlayer", showPlayer)
         put("autoNext", autoNext)
+        put("useYtm", useYtm)
     }
 
     companion object {
@@ -145,6 +148,7 @@ data class Settings(
                 stars = o.optBoolean("stars", d.stars),
                 showPlayer = o.optBoolean("showPlayer", d.showPlayer),
                 autoNext = o.optBoolean("autoNext", d.autoNext),
+                useYtm = o.optBoolean("useYtm", d.useYtm),
             )
         }
     }

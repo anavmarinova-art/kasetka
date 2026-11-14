@@ -72,7 +72,7 @@ class KasetkaWidget : GlanceAppWidget() {
         val playing = d.connected && d.playing
         // If the player isn't running, the play key opens Kasetka and starts the tape in the deck.
         val playAction: androidx.glance.action.Action = when {
-            MediaHub.alive && d.tapeId != null -> actionRunCallback<ToggleAction>()
+            (MediaHub.alive || Ytm.active) && d.tapeId != null -> actionRunCallback<ToggleAction>()
             inserted != null -> actionStartActivity(Intent(context, MainActivity::class.java)
                 .setAction(MainActivity.ACTION_PLAY_TAPE).setData(Uri.parse("kasetka://tape/${inserted.id}")))
             else -> startActivityOf<MainActivity>()
@@ -142,18 +142,18 @@ private suspend fun refresh(context: Context) {
 
 class ToggleAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        Store.init(context); MediaHub.connect(context); MediaHub.toggle(); refresh(context)
+        Store.init(context); MediaHub.connect(context); Ytm.connect(context); MediaHub.toggle(); refresh(context)
     }
 }
 
 class NextAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        Store.init(context); MediaHub.connect(context); MediaHub.next(); refresh(context)
+        Store.init(context); MediaHub.connect(context); Ytm.connect(context); MediaHub.next(); refresh(context)
     }
 }
 
 class PrevAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        Store.init(context); MediaHub.connect(context); MediaHub.prev(); refresh(context)
+        Store.init(context); MediaHub.connect(context); Ytm.connect(context); MediaHub.prev(); refresh(context)
     }
 }
