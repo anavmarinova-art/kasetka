@@ -100,6 +100,8 @@ object Ytm {
             tapeId = pendingTape; pendingTape = null; staleVid = null
             MediaHub.log("YouTube Music is playing the tape")
         }
+        // Once a tape was started, the deck follows whatever YouTube Music plays (never goes blank)
+        if (tapeId == null && pendingTape == null) tapeId = Store.activeTapeId.value?.takeIf { Store.tape(it) != null }
         val q = try {
             c.queue?.map {
                 QItem(it.queueId, it.description.title?.toString() ?: "", it.description.subtitle?.toString() ?: "",
@@ -183,7 +185,7 @@ object Ytm {
                 app.startActivity(Intent(app, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
             } catch (e: Exception) { }
-            if (!ok) { pendingTape = null; MediaHub.log("YouTube Music didn't switch to the tape") }
+            if (!ok) { pendingTape = null; MediaHub.log("couldn't confirm the switch; following YouTube Music anyway"); pull() }
         }
     }
 
