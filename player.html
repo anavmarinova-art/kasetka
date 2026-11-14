@@ -11,6 +11,10 @@
 <script>
 // The playback engine for the Kasetka Android app. The app loads this page in a hidden view and
 // drives it through window.kp; state is reported back through the Android bridge.
+try {
+  Object.defineProperty(document, 'hidden', { get: () => false });
+  Object.defineProperty(document, 'visibilityState', { get: () => 'visible' });
+} catch (_) {}
 const A = window.Android || { onState(){}, onQueue(){}, onReady(){}, onError(){}, onEnded(){} };
 let p = null, apiReady = false, ready = false, wantPlay = false, lastIds = '', want = null, watchdog = null;
 let jumpTo = 0, seekAfter = 0, current = null, blockedRun = 0;
@@ -61,7 +65,8 @@ function create(t) {
       A.onError(e.data);
       if ([100, 101, 150, 152, 153].includes(e.data) && (t.list || (t.videos && t.videos.length > 1))) {
         blockedRun++;
-        if (blockedRun >= 6) { A.onError(-5); return; }   // many songs in a row are blocked: stop and say so
+        let total = 1; try { total = (p.getPlaylist() || []).length || (t.videos ? t.videos.length : 1); } catch (_) {}
+        if (blockedRun >= total) { A.onError(-5); return; }   // every song is blocked: stop and say so
         setTimeout(() => { try { p.nextVideo(); } catch (_) {} }, 600);
       }
     }

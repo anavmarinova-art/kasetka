@@ -100,6 +100,8 @@ object MediaHub {
             }
         }
         w.addJavascriptInterface(Bridge, "Android")
+        // Without this Android freezes the player as soon as Kasetka is minimised (time moves, no sound)
+        w.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
         w.settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
         w.loadUrl(PLAYER_URL + "?v=" + System.currentTimeMillis())
         web = w
@@ -126,7 +128,10 @@ object MediaHub {
         loadJob?.cancel()
         loadJob = Store.scope.launch {
             // Playlists: read the songs ourselves and give the player the song list (it refuses whole playlists in apps)
-            val songs = if (t.list != null && !t.list.startsWith("RD")) Playlists.songs(t.list).map { it.id }.take(150) else emptyList()
+            val all = if (t.list != null && !t.list.startsWith("RD")) Playlists.songs(t.list).map { it.id }.take(200) else emptyList()
+            val songs = if (all.isNotEmpty()) Playlists.onlyPlayable(all) else emptyList()
+            if (all.isNotEmpty() && songs.isEmpty())
+                state.value = state.value.copy(error = "YouTube doesn't allow any song on this playlist to play inside other apps.")
             val o = JSONObject().apply {
                 put("play", play)
                 put("index", if (songs.isNotEmpty() && t.resumeIndex >= songs.size) 0 else t.resumeIndex)
@@ -138,7 +143,7 @@ object MediaHub {
                     else -> put("video", t.video)
                 }
             }
-            if (t.list != null && songs.isEmpty())
+            if (t.list != null && all.isEmpty())
                 state.value = state.value.copy(error = "Couldn't read this playlist's songs. Make sure it's Public or Unlisted.")
             if (state.value.tapeId == t.id) js("load($o)")
         }
