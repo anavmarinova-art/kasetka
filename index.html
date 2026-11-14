@@ -170,6 +170,26 @@ html[data-skin=cyber] .cassette{filter:drop-shadow(0 0 8px rgba(255,43,214,.45))
 .banner{background:#7a2a12;color:#fff;font-size:13px;padding:8px 14px;text-align:center;display:none}
 .banner.show{display:block}
 
+/* track list */
+.trk-list{flex:1;overflow:auto;margin:6px -6px 0;padding:0 6px}
+.trow{display:flex;align-items:center;gap:10px;padding:8px;border-radius:12px;cursor:pointer}
+.trow:active{background:var(--line)}
+.trow.now{background:color-mix(in srgb,var(--accent) 20%,transparent)}
+.trow img{width:64px;height:36px;object-fit:cover;border-radius:6px;flex:none;background:var(--line)}
+.trow .n{font-family:VT323,monospace;font-size:18px;color:var(--muted);width:26px;text-align:right;flex:none}
+.trow .tt{flex:1;min-width:0}
+.trow .tt b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trow .tt small{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trow .tick{width:26px;height:26px;border-radius:8px;border:2px solid var(--muted);flex:none;display:none;align-items:center;justify-content:center;color:#fff;font-size:15px}
+.selecting .trow .tick{display:flex}
+.trow .tick{color:transparent}
+.trow.sel .tick{background:var(--accent);border-color:var(--accent);color:#fff}
+.trk-foot{display:none;flex-direction:column;gap:8px;padding-top:10px;border-top:1px solid var(--line)}
+.selecting .trk-foot{display:flex}
+.modal .trk-foot .row{margin-top:0;align-items:center}
+.trk-foot input{flex:1;min-width:120px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);padding:0 10px}
+.deck-top button{border:none;background:rgba(0,0,0,.2);color:inherit;font:inherit;letter-spacing:2px;padding:5px 10px;border-radius:8px}
+
 #ytwrap{position:fixed;right:12px;bottom:12px;width:220px;height:220px;border-radius:14px;overflow:hidden;opacity:0;pointer-events:none;z-index:-1}
 #ytwrap.show{opacity:1;pointer-events:auto;z-index:60;box-shadow:0 10px 30px rgba(0,0,0,.5)}
 #ytwrap iframe{width:100%;height:100%;border:0}
@@ -197,7 +217,7 @@ html[data-skin=cyber] .cassette{filter:drop-shadow(0 0 8px rgba(255,43,214,.45))
     </section>
     <section id="deck">
       <div class="deck-body">
-        <div class="deck-top"><span><span class="led"></span>STEREO CASSETTE DECK</span><span id="deckSide">SIDE A</span></div>
+        <div class="deck-top"><span><span class="led"></span>STEREO CASSETTE DECK</span><button id="btnTracks">≡ TRACKS</button></div>
         <div class="door" id="door"><div class="slot" id="slot"></div><div class="glass"></div></div>
         <div class="lcd"><span id="lcdTrk">--/--</span><div class="marquee" id="lcdTitle"><span>NO TAPE</span></div><span id="lcdTime">00:00</span></div>
         <div class="lower">
@@ -231,6 +251,7 @@ html[data-skin=cyber] .cassette{filter:drop-shadow(0 0 8px rgba(255,43,214,.45))
       </div>
       <div class="cbar">
         <button class="ibtn" id="cTapes">📼 Tapes</button>
+        <button class="ibtn" id="cTracks">≡ Tracks</button>
         <button class="ibtn" id="cFull">⛶</button>
         <button class="ibtn" id="cSettings">⚙</button>
         <button class="ibtn" id="cExit" style="display:none">⤒ Unfolded view</button>
@@ -249,6 +270,23 @@ html[data-skin=cyber] .cassette{filter:drop-shadow(0 0 8px rgba(255,43,214,.45))
       <button class="ibtn" id="sheetClose">✕</button>
     </div>
     <div class="grid" data-grid></div>
+  </div>
+</div>
+
+<!-- track list of the tape in the deck -->
+<div class="modal-bg sheet-bg" id="trkBg">
+  <div class="modal sheet" id="trkPanel">
+    <div class="shelf-head">
+      <div style="flex:1;min-width:0"><b id="trkName" style="font-size:17px">Tracks</b><div id="trkInfo" style="font-size:12px;color:var(--muted)"></div></div>
+      <button class="ibtn" id="trkSelect">Pick songs</button>
+      <button class="ibtn" id="trkClose">✕</button>
+    </div>
+    <div class="trk-list" id="trkList"></div>
+    <div class="trk-foot">
+      <div class="row" style="justify-content:space-between"><span id="trkCount" style="font-weight:800">0 picked</span><button class="ibtn" id="trkAll">Pick all</button></div>
+      <div class="row"><input id="trkNewName" placeholder="New tape label" maxlength="40"><button class="ibtn primary" id="trkRecord">⏺ Record to new tape</button></div>
+      <button class="ibtn" id="trkSplit">Each picked song → its own tape</button>
+    </div>
   </div>
 </div>
 
@@ -315,6 +353,8 @@ const defaults = {theme: matchMedia('(prefers-color-scheme: light)').matches ? '
 let db = {tapes:[], settings:{...defaults}, currentId:null};
 try { const raw = localStorage.getItem(KEY); if (raw) { const d = JSON.parse(raw); db = {...db, ...d, settings:{...defaults, ...(d.settings||{})}}; } } catch(e) {}
 const S = db.settings;
+db.titles = db.titles || {};
+const isMulti = t => !!(t && (t.list || (t.videos && t.videos.length)));
 function save(){ try { localStorage.setItem(KEY, JSON.stringify(db)); } catch(e) {} }
 
 let current = db.tapes.find(t => t.id === db.currentId) || null;
@@ -462,7 +502,7 @@ function renderShelf(){
       return `<div class="case${current && current.id===t.id ? ' current':''}" data-id="${t.id}">
         <div class="edit-badge">✎</div>
         <div class="jcard" style="--tc:${t.color};--tc2:${t.color};${bg}">${t.cover ? '' : '<div class="bands"></div>'}<div class="jname">${esc(t.name)}</div></div>
-        ${t.count ? `<div class="meta">${t.count} trk</div>` : ''}
+        ${(t.count || (t.videos && t.videos.length)) ? `<div class="meta">${t.count || t.videos.length} trk</div>` : ''}
       </div>`;
     }).join('');
   });
@@ -500,8 +540,9 @@ $('#bkRestore').onclick = () => {
   try {
     const d = JSON.parse($('#backupTxt').value);
     if (!Array.isArray(d.tapes)) throw 0;
-    const have = new Set(db.tapes.map(t => t.list || t.video));
-    let n = 0; d.tapes.forEach(t => { if (t && (t.list || t.video) && !have.has(t.list || t.video)) { db.tapes.push({...t, id: t.id || ('t'+Date.now()+n)}); n++; } });
+    const key = t => t.list || t.video || (t.videos || []).join(',');
+    const have = new Set(db.tapes.map(key));
+    let n = 0; d.tapes.forEach(t => { if (t && key(t) && !have.has(key(t))) { db.tapes.push({...t, id: t.id || ('t'+Date.now()+n)}); n++; } });
     save(); renderShelf(); toast(n ? `Restored ${n} tape${n>1?'s':''}` : 'Nothing new to restore');
   } catch(e) { toast("That backup didn't read right"); }
 };
@@ -528,7 +569,8 @@ function parseLink(s){
 function openAdd(t){
   editId = t ? t.id : null;
   $('#addTitle').textContent = t ? 'Edit tape' : 'New tape';
-  $('#inLink').value = t ? (t.list ? `https://music.youtube.com/playlist?list=${t.list}` : `https://music.youtube.com/watch?v=${t.video}`) : '';
+  $('#inLink').value = t ? (t.list ? `https://music.youtube.com/playlist?list=${t.list}` : t.videos ? '' : `https://music.youtube.com/watch?v=${t.video}`) : '';
+  $('#inLink').placeholder = t && t.videos ? `Mixtape of ${t.videos.length} songs — leave empty to keep` : 'https://music.youtube.com/playlist?list=…';
   $('#inName').value = t ? t.name : '';
   $('#addDelete').style.display = t ? '' : 'none';
   $('#addErr').textContent = '';
@@ -537,6 +579,12 @@ function openAdd(t){
 $('#btnAdd').onclick = $('#sheetAdd').onclick = () => openAdd(null);
 $('#addCancel').onclick = () => closeModal('#addBg');
 $('#addSave').onclick = () => {
+  const mix = editId && db.tapes.find(x => x.id === editId);
+  if (mix && mix.videos && !$('#inLink').value.trim()) {
+    mix.name = $('#inName').value.trim() || mix.name;
+    if (current && current.id === mix.id) renderCassettes(false);
+    save(); renderShelf(); closeModal('#addBg'); return;
+  }
   const p = parseLink($('#inLink').value);
   const err = m => { $('#addErr').textContent = m; buzz([20,40,20]); };
   if (!p) return err("That doesn't look like a YouTube or YouTube Music link.");
@@ -546,6 +594,7 @@ $('#addSave').onclick = () => {
   if (editId) {
     const t = db.tapes.find(x => x.id === editId);
     const changed = (t.list||null) !== (p.list||null) || (t.video||null) !== (p.video||null);
+    if (t.videos) { t.videos = null; }
     Object.assign(t, {name, list: p.list || null, video: p.list ? null : p.video});
     if (changed) { t.cover = null; t.count = null; t.pos = null; }
     if (current && current.id === t.id) { renderCassettes(false); if (changed) cueTape(t); }
@@ -614,7 +663,7 @@ document.addEventListener('pointercancel', e => endDrag(e, true));
 function savePos(){
   if (!current || !playerReady) return;
   try {
-    const idx = current.list ? Math.max(0, player.getPlaylistIndex()) : 0;
+    const idx = isMulti(current) ? Math.max(0, player.getPlaylistIndex()) : 0;
     current.pos = {index: idx, time: player.getCurrentTime() || 0};
     save();
   } catch(e) {}
@@ -624,6 +673,7 @@ function cueTape(t){
   const pos = t.pos || {index:0, time:0};
   try {
     if (t.list) player.cuePlaylist({list:t.list, listType:'playlist', index:pos.index||0, startSeconds:pos.time||0});
+    else if (t.videos && t.videos.length) player.cuePlaylist(t.videos, pos.index||0, pos.time||0);
     else player.cueVideoById({videoId:t.video, startSeconds:pos.time||0});
     player.setVolume(Math.round(S.volume/16*100));
   } catch(e) { toast('Player hiccup — try again'); }
@@ -658,8 +708,8 @@ function eject(){
     setPlaying(false); renderCassettes(false); renderShelf(); resetDisplays();
   }, 330);
 }
-function prev(){ if (!playerReady || !current) return; try { if (player.getCurrentTime() > 3 || !current.list) player.seekTo(0, true); else player.previousVideo(); } catch(e) {} }
-function next(){ if (!playerReady || !current) return; try { if (current.list) player.nextVideo(); } catch(e) {} }
+function prev(){ if (!playerReady || !current) return; try { if (player.getCurrentTime() > 3 || !isMulti(current)) player.seekTo(0, true); else player.previousVideo(); } catch(e) {} }
+function next(){ if (!playerReady || !current) return; try { if (isMulti(current)) player.nextVideo(); } catch(e) {} }
 function resetDisplays(){
   setMarquee($('#lcdTitle'), 'NO TAPE'); $('#lcdTrk').textContent = '--/--'; $('#lcdTime').textContent = '00:00';
   setMarquee($('#cTitle'), 'No tape'); $('#cSub').textContent = 'Unfold to pick a tape, or tap Tapes';
@@ -765,7 +815,91 @@ $('#sheetClose').onclick = () => closeModal('#sheetBg');
 $('#cFull').onclick = async () => { try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); } catch(e) { toast('Fullscreen not available here'); } };
 
 /* ---------- YouTube player ---------- */
-let lastTitle = '', tickN = 0;
+let lastTitle = '', tickN = 0, lastIdx = -1;
+
+/* ---------- track list: jump to a song, or record picked songs onto new tapes ---------- */
+let selecting = false, picked = new Set(), trkT = null;
+function trackIds(){
+  if (!current) return null;
+  let ids = null; try { ids = playerReady ? player.getPlaylist() : null; } catch(e) {}
+  if (!ids && current.videos) ids = current.videos;
+  if (!ids && current.video) ids = [current.video];
+  return ids;
+}
+function renderTracks(){
+  const ids = trackIds();
+  $('#trkPanel').classList.toggle('selecting', selecting);
+  $('#trkSelect').textContent = selecting ? 'Done' : 'Pick songs';
+  $('#trkName').textContent = current ? current.name : 'Tracks';
+  if (!ids) { $('#trkInfo').textContent = ''; $('#trkList').innerHTML = '<div class="empty">Loading the tape… try again in a second.</div>'; return; }
+  let idx = 0; try { idx = Math.max(0, player.getPlaylistIndex()); } catch(e) {}
+  $('#trkInfo').textContent = `${ids.length} song${ids.length>1?'s':''} · tap one to play it`;
+  const st = $('#trkList').scrollTop;
+  $('#trkList').innerHTML = ids.map((id,i) => { const m = db.titles[id];
+    return `<div class="trow${i===idx?' now':''}${picked.has(id)?' sel':''}" data-i="${i}" data-id="${esc(id)}"><span class="n">${i+1}</span><img loading="lazy" src="https://i.ytimg.com/vi/${esc(id)}/default.jpg" alt=""><div class="tt"><b>${esc(m ? m.t : 'Song ' + (i+1))}</b><small>${esc(m && m.a ? m.a.replace(/ - Topic$/,'') : '')}</small></div><span class="tick">✓</span></div>`; }).join('');
+  $('#trkList').scrollTop = st;
+  $('#trkCount').textContent = `${picked.size} picked`;
+}
+function laterTracks(){ clearTimeout(trkT); trkT = setTimeout(() => { if ($('#trkBg').classList.contains('open')) renderTracks(); save(); }, 300); }
+async function fetchMeta(id){
+  const u = encodeURIComponent('https://www.youtube.com/watch?v=' + id);
+  for (const src of [`https://www.youtube.com/oembed?format=json&url=${u}`, `https://noembed.com/embed?url=${u}`]) {
+    try { const r = await fetch(src); if (!r.ok) continue; const j = await r.json(); if (j && j.title) return {t: j.title, a: j.author_name || ''}; } catch(e) {}
+  }
+  return null;
+}
+let titleQ = [], workers = 0;
+function loadTitles(ids){
+  ids.forEach(id => { if (!db.titles[id] && !titleQ.includes(id)) titleQ.push(id); });
+  while (workers < 4 && titleQ.length) {
+    workers++;
+    (async () => { while (titleQ.length) { const id = titleQ.shift(); const m = await fetchMeta(id); if (m) { db.titles[id] = m; laterTracks(); } } workers--; })();
+  }
+}
+function openTracks(){
+  if (!current) { toast('Insert a tape first'); return; }
+  selecting = false; picked.clear(); renderTracks(); openModal('#trkBg');
+  const ids = trackIds(); if (ids) loadTitles(ids);
+  setTimeout(() => { const now = $('#trkList .now'); if (now) now.scrollIntoView({block:'center'}); }, 60);
+}
+$('#btnTracks').onclick = $('#cTracks').onclick = openTracks;
+$('#trkClose').onclick = () => closeModal('#trkBg');
+$('#trkSelect').onclick = () => { selecting = !selecting; if (!selecting) picked.clear(); renderTracks(); };
+$('#trkAll').onclick = () => { const ids = trackIds() || []; if (picked.size === ids.length) picked.clear(); else ids.forEach(id => picked.add(id)); renderTracks(); };
+$('#trkList').addEventListener('click', e => {
+  const row = e.target.closest('.trow'); if (!row) return;
+  sfx('tick'); buzz(8);
+  if (selecting) {
+    const id = row.dataset.id; picked.has(id) ? picked.delete(id) : picked.add(id);
+    row.classList.toggle('sel', picked.has(id)); $('#trkCount').textContent = `${picked.size} picked`;
+  } else if (playerReady) {
+    try { player.playVideoAt(+row.dataset.i); } catch(_) {}
+    $$('.trow.now').forEach(r => r.classList.remove('now')); row.classList.add('now');
+  }
+});
+function pickedInOrder(){ return (trackIds() || []).filter(id => picked.has(id)); }
+function songName(id, i){ const m = db.titles[id]; return (m ? m.t : 'Song ' + (i+1)).slice(0, 40); }
+$('#trkRecord').onclick = () => {
+  const ids = pickedInOrder();
+  if (!ids.length) { toast('Pick some songs first'); buzz([20,40,20]); return; }
+  const name = $('#trkNewName').value.trim() || `Mixtape ${db.tapes.filter(t => t.videos).length + 1}`;
+  db.tapes.unshift({id:'t'+Date.now(), name, list:null, video:null, videos:ids, color: PALETTE[db.tapes.length % PALETTE.length],
+    added: Date.now(), lastPlayed: 0, pos: null, cover: `https://i.ytimg.com/vi/${ids[0]}/hqdefault.jpg`, count: ids.length});
+  save(); renderShelf(); sfx('clunk'); buzz([12,40,22]);
+  toast(`Recorded ${ids.length} song${ids.length>1?'s':''} onto “${name}”`);
+  $('#trkNewName').value = ''; picked.clear(); selecting = false; renderTracks();
+};
+$('#trkSplit').onclick = () => {
+  const ids = pickedInOrder();
+  if (!ids.length) { toast('Pick some songs first'); buzz([20,40,20]); return; }
+  const all = trackIds() || [];
+  const made = ids.map((id, k) => ({id:'t'+Date.now()+'_'+k, name: songName(id, all.indexOf(id)), list:null, video:id, videos:null,
+    color: PALETTE[(db.tapes.length + k) % PALETTE.length], added: Date.now(), lastPlayed: 0, pos: null, cover: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`, count: null}));
+  db.tapes = [...made, ...db.tapes];
+  save(); renderShelf(); sfx('clunk'); buzz([12,40,22]);
+  toast(`Made ${made.length} new tape${made.length>1?'s':''}`);
+  picked.clear(); selecting = false; renderTracks();
+};
 window.onYouTubeIframeAPIReady = () => {
   const vars = {playsinline:1, controls:0, rel:0, iv_load_policy:3, disablekb:1, fs:0};
   if (/^https?:/.test(location.protocol)) vars.origin = location.origin;
@@ -805,7 +939,8 @@ setInterval(() => {
   if (!playerReady || !current) return;
   let t=0, dur=0, idx=0, list=null, vd=null;
   try { t = player.getCurrentTime()||0; dur = player.getDuration()||0; list = player.getPlaylist(); idx = Math.max(0, player.getPlaylistIndex()); vd = player.getVideoData(); } catch(e) { return; }
-  const n = current.list ? (list ? list.length : 0) : 1;
+  const n = isMulti(current) ? (list ? list.length : 0) : 1;
+  if (idx !== lastIdx) { lastIdx = idx; if ($('#trkBg').classList.contains('open')) renderTracks(); }
   const p = n ? (idx + (dur ? t/dur : 0)) / n : 0;
   setPacks(p);
   const trk = n ? `${String(idx+1).padStart(2,'0')}/${String(n).padStart(2,'0')}` : '--/--';
@@ -814,12 +949,13 @@ setInterval(() => {
   $('#cBar').style.width = (p*100).toFixed(1) + '%';
   if (vd && vd.title && vd.title !== lastTitle) {
     lastTitle = vd.title;
+    if (vd.video_id && !db.titles[vd.video_id]) { db.titles[vd.video_id] = {t: vd.title, a: vd.author || ''}; save(); }
     setMarquee($('#lcdTitle'), vd.title.toUpperCase()); setMarquee($('#cTitle'), vd.title);
     $('#cSub').textContent = (vd.author ? vd.author.replace(/ - Topic$/,'') + ' · ' : '') + current.name;
   }
   let dirty = false;
   if (!current.cover && vd && vd.video_id) { current.cover = `https://i.ytimg.com/vi/${vd.video_id}/hqdefault.jpg`; dirty = true; renderCassettes(false); setPacks(p); }
-  if (current.list && list && current.count !== list.length) { current.count = list.length; dirty = true; }
+  if (isMulti(current) && list && current.count !== list.length) { current.count = list.length; dirty = true; }
   if (dirty) { save(); renderShelf(); }
   if (playing && ++tickN % 12 === 0) savePos();
 }, 400);
