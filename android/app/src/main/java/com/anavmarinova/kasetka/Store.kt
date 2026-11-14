@@ -195,6 +195,11 @@ object Store {
             setTapes(tapes.value.map { it.copy(lastVideo = null, count = it.videos?.size) })
             p.edit().putBoolean("fix_resume_v2", true).apply()
         }
+        if (!p.getBoolean("fix_resume_v3", false)) {
+            // An earlier build could save one tape's place onto another; start every tape from the top once.
+            setTapes(tapes.value.map { it.copy(resumeIndex = 0, resumeTime = 0f) })
+            p.edit().putBoolean("fix_resume_v3", true).apply()
+        }
         // Look up first song / name / cover for playlist tapes that don't have it yet
         scope.launch { tapes.value.filter { it.list != null && it.firstVideo == null }.forEach { ensureMeta(it, rename = false) } }
     }

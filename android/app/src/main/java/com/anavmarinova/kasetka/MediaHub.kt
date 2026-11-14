@@ -142,7 +142,7 @@ object MediaHub {
     private fun savePosition() {
         val d = state.value
         val id = d.tapeId ?: return
-        if (d.activeQueueId < 0) return
+        if (d.activeQueueId < 0 || staleVid != null || d.mediaId == null) return
         Store.saveResume(id, d.activeQueueId.toInt(), positionNow(d) / 1000f)
     }
 
