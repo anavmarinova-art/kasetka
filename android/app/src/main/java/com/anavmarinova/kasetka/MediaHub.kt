@@ -100,7 +100,8 @@ object MediaHub {
             }
         }
         w.addJavascriptInterface(Bridge, "Android")
-        w.loadUrl(PLAYER_URL)
+        w.settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+        w.loadUrl(PLAYER_URL + "?v=" + System.currentTimeMillis())
         web = w
         return w
     }

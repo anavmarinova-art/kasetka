@@ -13,68 +13,61 @@
 // drives it through window.kp; state is reported back through the Android bridge.
 const A = window.Android || { onState(){}, onQueue(){}, onReady(){}, onError(){}, onEnded(){} };
 let p = null, apiReady = false, ready = false, wantPlay = false, lastIds = '', want = null, watchdog = null;
+let jumpTo = 0, seekAfter = 0, current = null;
 
-// A brand-new YouTube player for every tape: swapping playlists inside one player is unreliable.
-function create(after) {
-  ready = false;
+// A brand-new YouTube player for every tape, with the playlist given the standard embed way
+// (playlist inside the player settings). Loading playlists into an existing player fails with error 2.
+function create(t) {
+  ready = false; current = t;
   if (p) { try { p.destroy(); } catch (_) {} p = null; }
   document.body.innerHTML = '<div id="yt"></div>';
-  p = new YT.Player('yt', {
-    width: '100%', height: '100%',
-    playerVars: { playsinline: 1, controls: 0, rel: 0, iv_load_policy: 3, disablekb: 1, fs: 0, origin: location.origin },
-    events: {
-      onReady() { ready = true; A.onReady(); if (after) after(); },
-      onStateChange(e) {
-        let v = ''; try { v = (p.getVideoData() || {}).video_id || ''; } catch (_) {}
-        let n = 0; try { n = (p.getPlaylist() || []).length; } catch (_) {}
-        console.log('state ' + e.data + ' video ' + v + ' songs ' + n);
-        if (e.data === 0) {
-          let l = null, i = 0;
-          try { l = p.getPlaylist(); i = p.getPlaylistIndex(); } catch (_) {}
-          if (!l || i >= l.length - 1) A.onEnded();
-        }
-        push();
-      },
-      onError(e) {
-        A.onError(e.data);
-        if ([100, 101, 150].includes(e.data)) {
-          let l = null; try { l = p.getPlaylist(); } catch (_) {}
-          if (l && p.getPlaylistIndex() < l.length - 1) setTimeout(() => p.nextVideo(), 800);
-        }
+  clearTimeout(watchdog);
+  const vars = { playsinline: 1, controls: 0, rel: 0, iv_load_policy: 3, disablekb: 1, fs: 0, origin: location.origin };
+  const opts = { width: '100%', height: '100%', playerVars: vars };
+  const listOk = t.list && !/^RD/.test(t.list);
+  jumpTo = t.index || 0; seekAfter = t.time || 0;
+  if (listOk) {
+    vars.listType = 'playlist'; vars.list = t.list;
+  } else if (t.videos && t.videos.length) {
+    opts.videoId = t.videos[0];
+    if (t.videos.length > 1) vars.playlist = t.videos.slice(1).join(',');
+  } else if (t.video) {
+    opts.videoId = t.video;
+  } else { A.onError(-3); return; }
+  if (jumpTo === 0 && seekAfter > 0) vars.start = Math.floor(seekAfter);
+  if (jumpTo === 0) seekAfter = 0;
+  console.log('start ' + JSON.stringify(t));
+  opts.events = {
+    onReady() {
+      ready = true; A.onReady();
+      if (t.play || wantPlay) { wantPlay = false; kp.play(); }
+    },
+    onStateChange(e) {
+      let v = ''; try { v = (p.getVideoData() || {}).video_id || ''; } catch (_) {}
+      let n = 0; try { n = (p.getPlaylist() || []).length; } catch (_) {}
+      console.log('state ' + e.data + ' video ' + v + ' songs ' + n);
+      if (e.data === 1 && seekAfter > 0) { const s = seekAfter; seekAfter = 0; p.seekTo(s, true); }
+      if (e.data === 0) {
+        let l = null, i = 0;
+        try { l = p.getPlaylist(); i = p.getPlaylistIndex(); } catch (_) {}
+        if (!l || i >= l.length - 1) A.onEnded();
+      }
+      push();
+    },
+    onError(e) {
+      A.onError(e.data);
+      if ([100, 101, 150].includes(e.data)) {
+        let l = null; try { l = p.getPlaylist(); } catch (_) {}
+        if (l && p.getPlaylistIndex() < l.length - 1) setTimeout(() => p.nextVideo(), 800);
       }
     }
-  });
+  };
+  p = new YT.Player('yt', opts);
 }
 
 function onYouTubeIframeAPIReady() {
   apiReady = true;
-  create(() => { if (want) { const w = want; want = null; start(w); } });
-}
-
-function start(t) {
-  console.log('start ' + JSON.stringify(t));
-  if (wantPlay) { t = Object.assign({}, t, { play: true }); wantPlay = false; }
-  const i = t.index || 0, s = t.time || 0;
-  // YouTube "Mix" radios (list=RD…) can't be loaded as playlists — play the song from the link instead.
-  const listOk = t.list && !/^RD/.test(t.list);
-  if (!listOk && !t.videos && !t.video) { A.onError(-3); return; }
-  clearTimeout(watchdog);
-  watchdog = setTimeout(() => {
-    let vid = ''; try { vid = (p.getVideoData() || {}).video_id || ''; } catch (_) {}
-    if (!vid) {
-      if (listOk && t.video) { A.onError(-4); kp.load(Object.assign({}, t, { list: null, index: 0, time: 0 })); }
-      else A.onError(-2);
-    }
-  }, 8000);
-  if (listOk) {
-    const o = { list: t.list, listType: 'playlist', index: i, startSeconds: s };
-    t.play ? p.loadPlaylist(o) : p.cuePlaylist(o);
-  } else if (t.videos) {
-    t.play ? p.loadPlaylist(t.videos, i, s) : p.cuePlaylist(t.videos, i, s);
-  } else {
-    const o = { videoId: t.video, startSeconds: s };
-    t.play ? p.loadVideoById(o) : p.cueVideoById(o);
-  }
+  if (want) { const w = want; want = null; create(w); }
 }
 
 function push() {
@@ -96,11 +89,23 @@ setInterval(push, 500);
 window.kp = {
   load(t) {
     lastIds = '';
-    clearTimeout(watchdog);
     if (!apiReady) { want = t; return; }
-    create(() => start(t));
+    create(t);
   },
-  play() { if (!ready || !p || !p.playVideo) { wantPlay = true; return; } p.playVideo(); },
+  play() {
+    if (!ready || !p || !p.playVideo) { wantPlay = true; return; }
+    if (jumpTo > 0) { const i = jumpTo; jumpTo = 0; p.playVideoAt(i); } else p.playVideo();
+    clearTimeout(watchdog);
+    const t = current;
+    watchdog = setTimeout(() => {
+      let vid = '', st = -1;
+      try { vid = (p.getVideoData() || {}).video_id || ''; st = p.getPlayerState(); } catch (_) {}
+      if (!vid && st !== 1 && st !== 3 && t) {
+        if (t.list && t.video) { A.onError(-4); kp.load(Object.assign({}, t, { list: null, index: 0, time: 0, play: true })); }
+        else A.onError(-2);
+      }
+    }, 8000);
+  },
   pause() { wantPlay = false; if (ready && p && p.pauseVideo) p.pauseVideo(); },
   stop() { p && p.stopVideo(); },
   next() { p && p.nextVideo(); },
