@@ -45,6 +45,8 @@ data class Deck(
     val duration: Long = 0,
     val queue: List<QItem> = emptyList(),
     val activeQueueId: Long = -1,
+    /** A message for the user when a tape or song couldn't be played; cleared once shown. */
+    val error: String? = null,
 )
 
 /**
@@ -63,6 +65,8 @@ object MediaHub {
     private var ids: List<String> = emptyList()
     private var lastSave = 0L
     private var artFor: String? = null
+    /** The song that was loaded before switching tapes; ignored until the new tape actually loads. */
+    private var staleVid: String? = null
 
     val alive: Boolean get() = web != null
 
@@ -98,10 +102,11 @@ object MediaHub {
             put("index", t.resumeIndex)
             put("time", t.resumeTime.toDouble())
             if (t.list != null) put("list", t.list)
-            else if (!t.videos.isNullOrEmpty()) put("videos", JSONArray(t.videos))
-            else put("video", t.video)
+            if (!t.videos.isNullOrEmpty()) put("videos", JSONArray(t.videos))
+            if (t.video != null) put("video", t.video)
         }
         ids = emptyList()
+        staleVid = state.value.mediaId
         state.value = state.value.copy(tapeId = t.id, title = "", artist = "", art = null, mediaId = null,
             playing = false, position = 0, duration = 0, queue = emptyList(), activeQueueId = -1)
         artFor = null
@@ -146,7 +151,16 @@ object MediaHub {
         @JavascriptInterface fun onReady() { main.post { state.value = state.value.copy(connected = true); refreshWidget() } }
         @JavascriptInterface fun onState(json: String) { main.post { applyState(json) } }
         @JavascriptInterface fun onQueue(json: String) { main.post { applyQueue(json) } }
-        @JavascriptInterface fun onError(code: Int) { }
+        @JavascriptInterface fun onError(code: Int) {
+            val msg = when (code) {
+                -2 -> "This tape didn't load. Check the link — the playlist has to be Public or Unlisted."
+                -3 -> "This link is a YouTube Mix (a radio), not a playlist. Share a playlist or album instead."
+                -4 -> "Couldn't load the playlist, so playing the song from the link instead."
+                100, 101, 150 -> "This song can't play outside YouTube."
+                else -> null
+            }
+            if (msg != null) main.post { state.value = state.value.copy(error = msg) }
+        }
         @JavascriptInterface fun onEnded() {
             main.post {
                 val id = state.value.tapeId ?: return@post
@@ -161,7 +175,10 @@ object MediaHub {
     private fun applyState(json: String) {
         val o = try { JSONObject(json) } catch (e: Exception) { return }
         val prev = state.value
-        val vid = o.optString("videoId").ifEmpty { null }
+        var vid = o.optString("videoId").ifEmpty { null }
+        // Still showing the previous tape's song: wait for the new tape instead of showing old info
+        if (vid != null && vid == staleVid && !o.optBoolean("playing")) return
+        if (vid != null && vid != staleVid) staleVid = null
         val title = o.optString("title").ifEmpty { vid?.let { Titles.get(it)?.first } ?: "" }
         val author = o.optString("author").ifEmpty { vid?.let { Titles.get(it)?.second } ?: "" }
         if (vid != null && o.optString("title").isNotEmpty()) Titles.put(vid, o.optString("title"), o.optString("author"))
@@ -197,6 +214,8 @@ object MediaHub {
         val t = Titles.get(id)
         QItem(i.toLong(), t?.first ?: "Song ${i + 1}", t?.second?.removeSuffix(" - Topic") ?: "", null, id)
     }
+
+    fun clearError() { state.value = state.value.copy(error = null) }
 
     fun refreshWidget() {
         val ctx = appContext ?: return

@@ -12,7 +12,7 @@
 // The playback engine for the Kasetka Android app. The app loads this page in a hidden view and
 // drives it through window.kp; state is reported back through the Android bridge.
 const A = window.Android || { onState(){}, onQueue(){}, onReady(){}, onError(){}, onEnded(){} };
-let p = null, ready = false, lastIds = '', want = null;
+let p = null, ready = false, lastIds = '', want = null, watchdog = null;
 
 function onYouTubeIframeAPIReady() {
   p = new YT.Player('yt', {
@@ -59,8 +59,24 @@ window.kp = {
   load(t) {
     if (!ready) { want = t; return; }
     lastIds = '';
+    clearTimeout(watchdog);
+    let oldVid = '';
+    try { oldVid = (p.getVideoData() || {}).video_id || ''; p.stopVideo(); } catch (_) {}
     const i = t.index || 0, s = t.time || 0;
-    if (t.list) {
+    // YouTube "Mix" radios (list=RD…) can't be loaded as playlists — play the song from the link instead.
+    const listOk = t.list && !/^RD/.test(t.list);
+    if (!listOk && t.list) { t = Object.assign({}, t, { list: null }); }
+    if (!listOk && !t.videos && !t.video) { A.onError(-3); return; }
+    // If nothing new has loaded after a few seconds, the link didn't work.
+    watchdog = setTimeout(() => {
+      let st = -1, vid = '';
+      try { st = p.getPlayerState(); vid = (p.getVideoData() || {}).video_id || ''; } catch (_) {}
+      if (!vid || (vid === oldVid && st !== 1 && st !== 3)) {
+        if (listOk && t.video) { A.onError(-4); kp.load(Object.assign({}, t, { list: null, index: 0 })); }
+        else A.onError(-2);
+      }
+    }, 6000);
+    if (listOk) {
       const o = { list: t.list, listType: 'playlist', index: i, startSeconds: s };
       t.play ? p.loadPlaylist(o) : p.cuePlaylist(o);
     } else if (t.videos) {

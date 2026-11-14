@@ -198,6 +198,9 @@ fun KasetkaApp(act: MainActivity) {
     }
     LaunchedEffect(deck.playing, s.hiss, visible, isActive) { Sfx.setHiss(isActive && deck.playing && s.hiss && visible) }
 
+    LaunchedEffect(deck.error) {
+        deck.error?.let { Toast.makeText(ctx, it, Toast.LENGTH_LONG).show(); MediaHub.clearError() }
+    }
     LaunchedEffect(pendingPlay) {
         pendingPlay?.let { id -> Store.pendingPlay.value = null; Store.tape(id)?.let { insert(it, true) } }
     }
@@ -798,7 +801,7 @@ private fun AddTapeDialog(pal: Pal, st: AddState, onClose: () -> Unit) {
         val autoName = name.isBlank() && p.list != null && p.list != "LM"
         val label = name.trim().ifBlank { if (p.list == "LM") "Liked Music" else "Tape ${Store.tapes.value.size + 1}" }
         if (t != null) {
-            val changed = t.list != p.list || t.video != p.video || t.videos != null
+            val changed = t.list != p.list || (p.video != null && t.video != p.video) || t.videos != null
             Store.update(t.id) {
                 if (changed) it.copy(name = label, list = p.list, video = p.video, videos = null, lastVideo = null,
                     cover = null, count = null, firstVideo = null)

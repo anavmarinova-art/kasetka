@@ -87,7 +87,7 @@ data class Tape(
             return Tape(
                 id = o.str("id") ?: ("t" + System.nanoTime()),
                 name = o.str("name") ?: "Tape",
-                list = list, video = if (list != null) null else video, videos = if (list != null) null else videos,
+                list = list, video = video, videos = if (list != null) null else videos,
                 color = color, cover = o.str("cover"),
                 added = o.optLong("added", System.currentTimeMillis()),
                 lastPlayed = o.optLong("lastPlayed", 0),
@@ -164,7 +164,7 @@ fun parseLink(raw: String): Parsed {
     if (list == null && path.contains("/browse/MPRE"))
         return Parsed(null, null, "For albums, use Share → Copy link on the album page (the link should contain \"list=\").")
     if (list == null && video == null) return bad
-    return Parsed(list, if (list != null) null else video, null)
+    return Parsed(list, video, null)
 }
 
 object Store {
