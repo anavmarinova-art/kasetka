@@ -2,10 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
-
-    <queries>
-        <package android:name="com.google.android.apps.youtube.music" />
-    </queries>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:label="Kasetka"
@@ -33,16 +32,11 @@
             </intent-filter>
         </activity>
 
-        <!-- Lets Kasetka see and control what YouTube Music is playing -->
+        <!-- Keeps the tape playing when the app is minimised; media controls on lock & cover screen -->
         <service
-            android:name=".KasetkaListener"
-            android:exported="true"
-            android:label="Kasetka"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
+            android:name=".PlayerService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <receiver
             android:name=".KasetkaWidgetReceiver"

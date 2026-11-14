@@ -1,47 +1,39 @@
 package com.anavmarinova.kasetka
 
-import android.app.Activity
-import android.content.ActivityNotFoundException
-import android.content.ComponentName
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.MutableContextWrapper
 import android.graphics.Bitmap
-import android.media.MediaMetadata
-import android.media.session.MediaController
-import android.media.session.MediaSessionManager
-import android.media.session.PlaybackState
-import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.service.notification.NotificationListenerService
-import android.widget.Toast
-import androidx.activity.ComponentActivity
-import androidx.lifecycle.lifecycleScope
-import androidx.core.app.NotificationManagerCompat
+import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.core.content.ContextCompat
 import androidx.glance.appwidget.updateAll
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-
-/** Required by Android so Kasetka may see and control YouTube Music's player. It does nothing with notifications. */
-class KasetkaListener : NotificationListenerService() {
-    override fun onListenerConnected() {
-        super.onListenerConnected()
-        Store.init(this)
-        MediaHub.connect(this)
-    }
-}
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
 
 data class QItem(val id: Long, val title: String, val subtitle: String, val icon: Bitmap?, val mediaId: String? = null)
 
 data class Deck(
-    val permission: Boolean = false,
+    val permission: Boolean = true,
+    /** The built-in player is loaded and ready. */
     val connected: Boolean = false,
+    /** The tape currently loaded in the player. */
+    val tapeId: String? = null,
     val title: String = "",
     val artist: String = "",
     val art: Bitmap? = null,
@@ -55,186 +47,198 @@ data class Deck(
     val activeQueueId: Long = -1,
 )
 
-/** Watches YouTube Music's media session and sends it play/pause/skip commands. */
+/**
+ * Plays tapes with YouTube's own embedded player, running in a hidden WebView inside Kasetka.
+ * The WebView lives for the whole app process, so music keeps going when the app is minimised
+ * (PlayerService keeps the process alive and shows the media controls).
+ */
 object MediaHub {
-    const val YTM = "com.google.android.apps.youtube.music"
+    private const val PLAYER_URL = "https://anavmarinova-art.github.io/kasetka/player.html"
 
     val state = MutableStateFlow(Deck())
-    private var controller: MediaController? = null
+    private var web: WebView? = null
     private var appContext: Context? = null
-    private var listening = false
     private val main = Handler(Looper.getMainLooper())
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var widgetJob: Job? = null
+    private var ids: List<String> = emptyList()
+    private var lastSave = 0L
+    private var artFor: String? = null
 
-    private val callback = object : MediaController.Callback() {
-        override fun onMetadataChanged(metadata: MediaMetadata?) = pull()
-        override fun onPlaybackStateChanged(state: PlaybackState?) = pull()
-        override fun onQueueChanged(queue: MutableList<android.media.session.MediaSession.QueueItem>?) = pull()
-        override fun onSessionDestroyed() { controller = null; pull() }
-    }
-    private val sessionsListener = MediaSessionManager.OnActiveSessionsChangedListener { pick(it) }
+    val alive: Boolean get() = web != null
 
-    fun hasPermission(ctx: Context) =
-        NotificationManagerCompat.getEnabledListenerPackages(ctx).contains(ctx.packageName)
+    fun connect(ctx: Context) { appContext = ctx.applicationContext }
 
-    fun connect(ctx: Context) {
-        val c = ctx.applicationContext
-        appContext = c
-        if (!hasPermission(c)) {
-            state.value = state.value.copy(permission = false, connected = false, playing = false)
-            return
-        }
-        val msm = c.getSystemService(MediaSessionManager::class.java) ?: return
-        val comp = ComponentName(c, KasetkaListener::class.java)
-        try {
-            if (!listening) {
-                msm.addOnActiveSessionsChangedListener(sessionsListener, comp, main)
-                listening = true
-            }
-            pick(msm.getActiveSessions(comp))
-        } catch (e: SecurityException) {
-            state.value = state.value.copy(permission = false, connected = false)
-        }
+    /** The single player view. The activity shows it (invisibly) so the page renders; it survives the activity. */
+    @SuppressLint("SetJavaScriptEnabled")
+    fun webView(ctx: Context): WebView {
+        appContext = ctx.applicationContext
+        web?.let { return it }
+        val w = WebView(MutableContextWrapper(ctx.applicationContext))
+        w.settings.javaScriptEnabled = true
+        w.settings.domStorageEnabled = true
+        w.settings.mediaPlaybackRequiresUserGesture = false
+        w.webChromeClient = WebChromeClient()
+        w.webViewClient = WebViewClient()
+        w.addJavascriptInterface(Bridge, "Android")
+        w.loadUrl(PLAYER_URL)
+        web = w
+        return w
     }
 
-    private fun pick(list: List<MediaController>?) {
-        val yt = list?.firstOrNull { it.packageName == YTM }
-        if (yt?.sessionToken != controller?.sessionToken) {
-            controller?.unregisterCallback(callback)
-            controller = yt
-            yt?.registerCallback(callback, main)
-        }
-        pull()
+    private fun js(code: String) {
+        main.post { web?.evaluateJavascript("window.kp && kp.$code", null) }
     }
 
-    private fun pull() {
-        val prev = state.value
-        val c = controller
-        val ctx = appContext
-        if (c == null) {
-            state.value = prev.copy(connected = false, playing = false,
-                permission = ctx?.let { hasPermission(it) } ?: prev.permission)
-            changed(prev)
-            return
+    // ── commands ──
+    fun loadTape(ctx: Context, t: Tape, play: Boolean) {
+        webView(ctx)
+        Store.markStarted(t.id)
+        val o = JSONObject().apply {
+            put("play", play)
+            put("index", t.resumeIndex)
+            put("time", t.resumeTime.toDouble())
+            if (t.list != null) put("list", t.list)
+            else if (!t.videos.isNullOrEmpty()) put("videos", JSONArray(t.videos))
+            else put("video", t.video)
         }
-        val m = c.metadata
-        val s = c.playbackState
-        val q = try {
-            c.queue?.map {
-                QItem(it.queueId, it.description.title?.toString() ?: "",
-                    it.description.subtitle?.toString() ?: "", it.description.iconBitmap, it.description.mediaId)
-            }
-        } catch (e: Exception) { null } ?: emptyList()
-        state.value = Deck(
-            permission = true,
-            connected = true,
-            title = m?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: "",
-            artist = m?.getString(MediaMetadata.METADATA_KEY_ARTIST)
-                ?: m?.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST) ?: "",
-            art = m?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-                ?: m?.getBitmap(MediaMetadata.METADATA_KEY_ART)
-                ?: m?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON),
-            mediaId = m?.getString(MediaMetadata.METADATA_KEY_MEDIA_ID),
-            playing = s?.state == PlaybackState.STATE_PLAYING || s?.state == PlaybackState.STATE_BUFFERING,
-            position = s?.position ?: 0,
-            positionAt = s?.lastPositionUpdateTime ?: SystemClock.elapsedRealtime(),
-            speed = s?.playbackSpeed ?: 1f,
-            duration = m?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0,
-            queue = q,
-            activeQueueId = s?.activeQueueItemId ?: -1,
-        )
-        changed(prev)
+        ids = emptyList()
+        state.value = state.value.copy(tapeId = t.id, title = "", artist = "", art = null, mediaId = null,
+            playing = false, position = 0, duration = 0, queue = emptyList(), activeQueueId = -1)
+        artFor = null
+        js("load($o)")
+        if (play) startService(ctx)
     }
 
-    private fun changed(prev: Deck) {
-        val now = state.value
-        if (now.mediaId != prev.mediaId) {
-            if (Store.awaitFrom.value != null && now.mediaId != Store.awaitFrom.value) Store.awaitFrom.value = null
-            if (Store.awaitFrom.value == null) Store.rememberVideo(now.mediaId)
-        }
-        // Learn a playlist tape's first song from YouTube Music's queue (works for private playlists too)
-        if (Store.awaitFrom.value == null && now.queue.isNotEmpty() &&
-            (now.queue.size != prev.queue.size || now.queue.firstOrNull()?.mediaId != prev.queue.firstOrNull()?.mediaId))
-            Store.learnFirstVideo(now.queue.first().mediaId)
-        if (now.title != prev.title || now.playing != prev.playing || now.connected != prev.connected ||
-            now.art !== prev.art || now.permission != prev.permission) refreshWidget()
+    fun play() { appContext?.let { startService(it) }; js("play()") }
+    fun pause() { savePosition(); js("pause()") }
+    fun toggle() { if (state.value.playing) pause() else play() }
+    fun next() { js("next()") }
+    fun prev() { js("prev()") }
+    fun seekBy(ms: Long) { js("seekBy(${ms / 1000.0})") }
+    fun seekTo(ms: Long) { js("seek(${ms / 1000.0})") }
+    fun skipTo(queueId: Long) { js("at($queueId)") }
+
+    fun eject() {
+        savePosition()
+        js("stop()")
+        state.value = state.value.copy(tapeId = null, playing = false)
+        appContext?.let { it.stopService(Intent(it, PlayerService::class.java)) }
+        refreshWidget()
     }
 
-    fun refreshWidget() {
-        val ctx = appContext ?: return
-        widgetJob?.cancel()
-        widgetJob = scope.launch {
-            delay(400)
-            try { KasetkaWidget().updateAll(ctx) } catch (e: Exception) { }
-        }
+    private fun startService(ctx: Context) {
+        try { ContextCompat.startForegroundService(ctx, Intent(ctx, PlayerService::class.java)) } catch (e: Exception) { }
     }
 
     fun positionNow(d: Deck = state.value): Long =
         if (d.playing) d.position + ((SystemClock.elapsedRealtime() - d.positionAt) * d.speed).toLong()
         else d.position
 
-    private val tc get() = controller?.transportControls
-    fun play() { tc?.play() }
-    fun pause() { tc?.pause() }
-    fun toggle() { if (state.value.playing) pause() else play() }
-    fun next() { tc?.skipToNext() }
-    fun prev() { if (positionNow() > 3000) tc?.seekTo(0) else tc?.skipToPrevious() }
-    fun seekBy(ms: Long) { tc?.seekTo((positionNow() + ms).coerceAtLeast(0)) }
-    fun skipTo(queueId: Long) { tc?.skipToQueueItem(queueId) }
-}
+    private fun savePosition() {
+        val d = state.value
+        val id = d.tapeId ?: return
+        if (d.activeQueueId < 0) return
+        Store.saveResume(id, d.activeQueueId.toInt(), positionNow(d) / 1000f)
+    }
 
-/** Starts a tape in YouTube Music, then (optionally) hops straight back to the deck. */
-object Launcher {
-    fun ytIntent(t: Tape): Intent =
-        Intent(Intent.ACTION_VIEW, Uri.parse(t.playUrl()))
-            .setPackage(MediaHub.YTM)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-
-    fun start(activity: ComponentActivity, tape: Tape) {
-        activity.lifecycleScope.launch {
-            val t = Store.ensureMeta(tape, rename = false)
-            // Until YouTube Music actually switches songs, don't treat what's playing as this tape
-            if (Store.activeTapeId.value != t.id) {
-                val from = MediaHub.state.value.mediaId ?: ""
-                Store.awaitFrom.value = from
-                Store.scope.launch {
-                    delay(12000)
-                    // YouTube Music never switched: what's playing isn't this tape, so don't claim it.
-                    if (Store.awaitFrom.value == from && Store.activeTapeId.value == t.id) {
-                        Store.awaitFrom.value = null
-                        Store.clearActive()
-                    }
-                }
+    // ── reports from the player page ──
+    private object Bridge {
+        @JavascriptInterface fun onReady() { main.post { state.value = state.value.copy(connected = true); refreshWidget() } }
+        @JavascriptInterface fun onState(json: String) { main.post { applyState(json) } }
+        @JavascriptInterface fun onQueue(json: String) { main.post { applyQueue(json) } }
+        @JavascriptInterface fun onError(code: Int) { }
+        @JavascriptInterface fun onEnded() {
+            main.post {
+                val id = state.value.tapeId ?: return@post
+                Sfx.play(Sfx.Kind.CLUNK)
+                Store.saveResume(id, 0, 0f)
+                val ctx = appContext ?: return@post
+                Store.tape(id)?.let { loadTape(ctx, it, play = false) }
             }
-            openInYtm(activity, t)
         }
     }
 
-    private fun openInYtm(activity: Activity, t: Tape) {
-        Store.markStarted(t.id)
-        val app = activity.applicationContext
-        try {
-            activity.startActivity(ytIntent(t))
-        } catch (e: ActivityNotFoundException) {
-            Toast.makeText(activity, "Install YouTube Music to play tapes", Toast.LENGTH_LONG).show()
-            return
+    private fun applyState(json: String) {
+        val o = try { JSONObject(json) } catch (e: Exception) { return }
+        val prev = state.value
+        val vid = o.optString("videoId").ifEmpty { null }
+        val title = o.optString("title").ifEmpty { vid?.let { Titles.get(it)?.first } ?: "" }
+        val author = o.optString("author").ifEmpty { vid?.let { Titles.get(it)?.second } ?: "" }
+        if (vid != null && o.optString("title").isNotEmpty()) Titles.put(vid, o.optString("title"), o.optString("author"))
+        val now = prev.copy(
+            connected = true,
+            title = title, artist = author, mediaId = vid,
+            playing = o.optBoolean("playing"),
+            position = (o.optDouble("time", 0.0) * 1000).toLong(),
+            positionAt = SystemClock.elapsedRealtime(),
+            duration = (o.optDouble("duration", 0.0) * 1000).toLong(),
+            activeQueueId = o.optInt("index", 0).toLong(),
+            queue = if (prev.queue.isEmpty() && ids.isNotEmpty()) buildQueue() else prev.queue,
+        )
+        state.value = now
+        if (vid != null && vid != artFor) {
+            artFor = vid
+            Store.scope.launch {
+                val b = Thumbs.load("https://i.ytimg.com/vi/$vid/hqdefault.jpg")
+                if (state.value.mediaId == vid) { state.value = state.value.copy(art = b); refreshWidget() }
+            }
         }
-        if (!t.canAutoplay) {
-            Toast.makeText(activity, "Tap ▶ Play in YouTube Music. After that Kasetka starts this tape by itself.",
-                Toast.LENGTH_LONG).show()
-            return
+        if (now.playing && SystemClock.elapsedRealtime() - lastSave > 5000) { lastSave = SystemClock.elapsedRealtime(); savePosition() }
+        if (now.title != prev.title || now.playing != prev.playing || now.tapeId != prev.tapeId) refreshWidget()
+    }
+
+    private fun applyQueue(json: String) {
+        ids = try { JSONArray(json).let { a -> (0 until a.length()).map { a.getString(it) } } } catch (e: Exception) { emptyList() }
+        state.value = state.value.copy(queue = buildQueue())
+        Titles.fetchMissing(ids) { state.value = state.value.copy(queue = buildQueue()) }
+    }
+
+    private fun buildQueue(): List<QItem> = ids.mapIndexed { i, id ->
+        val t = Titles.get(id)
+        QItem(i.toLong(), t?.first ?: "Song ${i + 1}", t?.second?.removeSuffix(" - Topic") ?: "", null, id)
+    }
+
+    fun refreshWidget() {
+        val ctx = appContext ?: return
+        widgetJob?.cancel()
+        widgetJob = Store.scope.launch {
+            delay(400)
+            try { KasetkaWidget().updateAll(ctx) } catch (e: Exception) { }
         }
-        if (!Store.settings.value.returnToDeck) return
-        // Give YouTube Music time to switch to the new tape, then hop back to the deck.
-        Store.scope.launch {
-            val until = SystemClock.elapsedRealtime() + 6000
-            while (Store.awaitFrom.value != null && SystemClock.elapsedRealtime() < until) delay(200)
-            delay(700)
-            try {
-                app.startActivity(Intent(app, MainActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
-            } catch (e: Exception) { }
+    }
+}
+
+/** Song titles for the track list, looked up once from YouTube's public oEmbed endpoint and remembered. */
+object Titles {
+    private val map = HashMap<String, Pair<String, String>>()
+    private val queue = ArrayDeque<String>()
+    private var workers = 0
+    private var onChange: (() -> Unit)? = null
+
+    fun get(id: String) = map[id]
+    fun put(id: String, title: String, author: String) { map[id] = title to author }
+
+    fun fetchMissing(ids: List<String>, changed: () -> Unit) {
+        onChange = changed
+        ids.filter { it !in map && it !in queue }.forEach { queue.addLast(it) }
+        while (workers < 4 && queue.isNotEmpty()) {
+            workers++
+            Store.scope.launch {
+                while (queue.isNotEmpty()) {
+                    val id = queue.removeFirst()
+                    val r = withContext(Dispatchers.IO) {
+                        try {
+                            val u = "https://www.youtube.com/oembed?format=json&url=" +
+                                URLEncoder.encode("https://www.youtube.com/watch?v=$id", "UTF-8")
+                            val c = URL(u).openConnection() as HttpURLConnection
+                            c.connectTimeout = 8000; c.readTimeout = 8000
+                            if (c.responseCode == 200) JSONObject(c.inputStream.bufferedReader().readText()) else null
+                        } catch (e: Exception) { null }
+                    }
+                    if (r != null) { map[id] = r.optString("title") to r.optString("author_name"); onChange?.invoke() }
+                }
+                workers--
+            }
         }
     }
 }

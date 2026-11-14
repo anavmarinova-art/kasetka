@@ -40,6 +40,9 @@ data class Tape(
     val count: Int? = null,
     /** First song of a playlist, looked up once so YouTube Music can start exactly this playlist. */
     val firstVideo: String? = null,
+    /** Where to pick up again: song number in the tape and seconds into it. */
+    val resumeIndex: Int = 0,
+    val resumeTime: Float = 0f,
 ) {
     val trackCount: Int? get() = count ?: videos?.size
 
@@ -68,6 +71,7 @@ data class Tape(
         putOpt("lastVideo", lastVideo)
         if (count != null) put("count", count)
         putOpt("firstVideo", firstVideo)
+        put("resumeIndex", resumeIndex); put("resumeTime", resumeTime.toDouble())
     }
 
     companion object {
@@ -90,6 +94,8 @@ data class Tape(
                 lastVideo = o.str("lastVideo"),
                 count = if (o.has("count") && !o.isNull("count")) o.optInt("count") else null,
                 firstVideo = o.str("firstVideo"),
+                resumeIndex = o.optInt("resumeIndex", 0),
+                resumeTime = o.optDouble("resumeTime", 0.0).toFloat(),
             )
         }
     }
@@ -258,6 +264,12 @@ object Store {
         val t = tape(activeTapeId.value) ?: return
         if (t.list == null || t.lastVideo == videoId) return
         update(t.id) { it.copy(lastVideo = videoId) }
+    }
+
+    fun saveResume(id: String, index: Int, time: Float) {
+        val t = tape(id) ?: return
+        if (t.resumeIndex == index && kotlin.math.abs(t.resumeTime - time) < 1f) return
+        update(id) { it.copy(resumeIndex = index, resumeTime = time) }
     }
 
     fun clearActive() { activeTapeId.value = null; persist() }

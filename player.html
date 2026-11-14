@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kasetka player</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#yt{width:100%;height:100%}</style>
+</head>
+<body>
+<div id="yt"></div>
+<script>
+// The playback engine for the Kasetka Android app. The app loads this page in a hidden view and
+// drives it through window.kp; state is reported back through the Android bridge.
+const A = window.Android || { onState(){}, onQueue(){}, onReady(){}, onError(){}, onEnded(){} };
+let p = null, ready = false, lastIds = '', want = null;
+
+function onYouTubeIframeAPIReady() {
+  p = new YT.Player('yt', {
+    width: '100%', height: '100%',
+    playerVars: { playsinline: 1, controls: 0, rel: 0, iv_load_policy: 3, disablekb: 1, fs: 0, origin: location.origin },
+    events: {
+      onReady() { ready = true; A.onReady(); if (want) { const w = want; want = null; kp.load(w); } },
+      onStateChange(e) {
+        if (e.data === 0) {
+          let l = null, i = 0;
+          try { l = p.getPlaylist(); i = p.getPlaylistIndex(); } catch (_) {}
+          if (!l || i >= l.length - 1) A.onEnded();
+        }
+        push();
+      },
+      onError(e) {
+        A.onError(e.data);
+        if ([100, 101, 150].includes(e.data)) {
+          let l = null; try { l = p.getPlaylist(); } catch (_) {}
+          if (l && p.getPlaylistIndex() < l.length - 1) setTimeout(() => p.nextVideo(), 800);
+        }
+      }
+    }
+  });
+}
+
+function push() {
+  if (!ready) return;
+  let ids = null, vd = {}, st = -1;
+  try { ids = p.getPlaylist(); vd = p.getVideoData() || {}; st = p.getPlayerState(); } catch (_) {}
+  A.onState(JSON.stringify({
+    playing: st === 1 || st === 3, state: st,
+    time: p.getCurrentTime ? (p.getCurrentTime() || 0) : 0,
+    duration: p.getDuration ? (p.getDuration() || 0) : 0,
+    index: Math.max(0, p.getPlaylistIndex ? p.getPlaylistIndex() : 0),
+    videoId: vd.video_id || '', title: vd.title || '', author: vd.author || ''
+  }));
+  const j = JSON.stringify(ids || (vd.video_id ? [vd.video_id] : []));
+  if (j !== lastIds && j !== '[]') { lastIds = j; A.onQueue(j); }
+}
+setInterval(push, 500);
+
+window.kp = {
+  load(t) {
+    if (!ready) { want = t; return; }
+    lastIds = '';
+    const i = t.index || 0, s = t.time || 0;
+    if (t.list) {
+      const o = { list: t.list, listType: 'playlist', index: i, startSeconds: s };
+      t.play ? p.loadPlaylist(o) : p.cuePlaylist(o);
+    } else if (t.videos) {
+      t.play ? p.loadPlaylist(t.videos, i, s) : p.cuePlaylist(t.videos, i, s);
+    } else {
+      const o = { videoId: t.video, startSeconds: s };
+      t.play ? p.loadVideoById(o) : p.cueVideoById(o);
+    }
+  },
+  play() { p && p.playVideo(); },
+  pause() { p && p.pauseVideo(); },
+  stop() { p && p.stopVideo(); },
+  next() { p && p.nextVideo(); },
+  prev() { if (!p) return; if (p.getCurrentTime() > 3) p.seekTo(0, true); else p.previousVideo(); },
+  seekBy(d) { p && p.seekTo(Math.max(0, p.getCurrentTime() + d), true); },
+  seek(s) { p && p.seekTo(s, true); },
+  at(i) { p && p.playVideoAt(i); }
+};
+</script>
+<script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>

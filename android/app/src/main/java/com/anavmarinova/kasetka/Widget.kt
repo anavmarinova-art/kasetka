@@ -54,7 +54,7 @@ class KasetkaWidget : GlanceAppWidget() {
         val s = Store.settings.value
         val pal = palette(s)
         val inserted = Store.tape(Store.insertedId.value)
-        val active = inserted != null && inserted.id == Store.activeTapeId.value && d.connected && Store.awaitFrom.value == null
+        val active = inserted != null && inserted.id == d.tapeId && d.connected
         val qIdx = d.queue.indexOfFirst { it.id == d.activeQueueId }
         val n = d.queue.size.coerceAtLeast(1)
         val progress = if (active && d.duration > 0)
@@ -64,23 +64,29 @@ class KasetkaWidget : GlanceAppWidget() {
             inserted?.color ?: PALETTE[0], art, progress)
         val recent = Store.tapes.value.sortedByDescending { it.lastPlayed }.take(3)
         val title = when {
-            !d.permission -> "Open Kasetka to connect"
             d.connected && d.title.isNotEmpty() -> d.title
             inserted != null -> inserted.name
             else -> "No tape in the deck"
         }
         val artist = if (d.connected) d.artist.removeSuffix(" - Topic") else ""
         val playing = d.connected && d.playing
+        // If the player isn't running, the play key opens Kasetka and starts the tape in the deck.
+        val playAction: androidx.glance.action.Action = when {
+            MediaHub.alive && d.tapeId != null -> actionRunCallback<ToggleAction>()
+            inserted != null -> actionStartActivity(Intent(context, MainActivity::class.java)
+                .setAction(MainActivity.ACTION_PLAY_TAPE).setData(Uri.parse("kasetka://tape/${inserted.id}")))
+            else -> startActivityOf<MainActivity>()
+        }
 
         provideContent {
-            WidgetBody(context, pal, cassette, title, artist, playing, recent)
+            WidgetBody(context, pal, cassette, title, artist, playing, recent, playAction)
         }
     }
 }
 
 @Composable
 private fun WidgetBody(context: Context, pal: Pal, cassette: android.graphics.Bitmap, title: String, artist: String,
-                       playing: Boolean, recent: List<Tape>) {
+                       playing: Boolean, recent: List<Tape>, playAction: androidx.glance.action.Action) {
     val ink = ColorProvider(pal.keyInk)
     Column(GlanceModifier.fillMaxSize().background(pal.deckBottom).cornerRadius(24.dp).padding(12.dp)) {
         Row(GlanceModifier.fillMaxWidth().defaultWeight(), verticalAlignment = Alignment.CenterVertically) {
@@ -96,7 +102,7 @@ private fun WidgetBody(context: Context, pal: Pal, cassette: android.graphics.Bi
                 Row {
                     WidgetKey(pal, "⏮", actionRunCallback<PrevAction>())
                     Spacer(GlanceModifier.width(6.dp))
-                    WidgetKey(pal, if (playing) "❚❚" else "▶", actionRunCallback<ToggleAction>(), accent = true)
+                    WidgetKey(pal, if (playing) "❚❚" else "▶", playAction, accent = true)
                     Spacer(GlanceModifier.width(6.dp))
                     WidgetKey(pal, "⏭", actionRunCallback<NextAction>())
                 }

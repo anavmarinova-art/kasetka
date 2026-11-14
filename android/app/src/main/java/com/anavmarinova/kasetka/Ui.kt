@@ -68,6 +68,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import android.content.MutableContextWrapper
+import android.view.ViewGroup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -87,16 +90,6 @@ private fun toast(ctx: Context, msg: String) = Toast.makeText(ctx, msg, Toast.LE
 private fun fmt(ms: Long): String {
     val s = (ms / 1000).coerceAtLeast(0)
     return "%02d:%02d".format(s / 60, s % 60)
-}
-
-private fun openListenerSettings(ctx: Context) {
-    val comp = ComponentName(ctx, KasetkaListener::class.java).flattenToString()
-    try {
-        ctx.startActivity(Intent(SysSettings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
-            .putExtra(SysSettings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, comp))
-    } catch (e: Exception) {
-        ctx.startActivity(Intent(SysSettings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-    }
 }
 
 private fun openAppDetails(ctx: Context) {
@@ -158,7 +151,7 @@ fun KasetkaApp(act: MainActivity) {
     var forceCover by remember { mutableStateOf(false) }
     val isCover = forceCover || cfg.smallestScreenWidthDp < 560 || half
     val inserted = tapes.find { it.id == insertedId }
-    val isActive = inserted != null && inserted.id == activeId && deck.connected && awaitFrom == null
+    val isActive = inserted != null && inserted.id == deck.tapeId && deck.connected
 
     var addDialog by remember { mutableStateOf<AddState?>(null) }
     var showSettings by remember { mutableStateOf(false) }
@@ -166,21 +159,21 @@ fun KasetkaApp(act: MainActivity) {
     var showTapes by remember { mutableStateOf(false) }
     var fast by remember { mutableIntStateOf(0) }
     var holdJob by remember { mutableStateOf<Job?>(null) }
-    val ytmInstalled = remember { ctx.packageManager.getLaunchIntentForPackage(MediaHub.YTM) != null }
 
     fun haptic(kind: Int = HapticFeedbackConstants.KEYBOARD_TAP) {
         if (s.haptics) view.performHapticFeedback(kind)
     }
 
     fun startOrPlay(t: Tape) {
-        if (activeId == t.id && deck.connected) MediaHub.play() else Launcher.start(act, t)
+        if (deck.tapeId == t.id && deck.connected) MediaHub.play() else MediaHub.loadTape(ctx, t, play = true)
     }
 
     fun insert(t: Tape, autoplay: Boolean) {
         Sfx.play(Sfx.Kind.CLUNK); haptic(HapticFeedbackConstants.CONFIRM)
         Store.setInserted(t.id)
         if (autoplay) startOrPlay(t)
-        else toast(ctx, if (s.foldToPlay) "Fold the phone to play — or press PLAY" else "Press PLAY")
+        else if (deck.tapeId != t.id) MediaHub.loadTape(ctx, t, play = false)
+        if (!autoplay) toast(ctx, if (s.foldToPlay) "Fold the phone to play — or press PLAY" else "Press PLAY")
     }
 
     // Fold = play, unfold = (optionally) pause
@@ -259,7 +252,7 @@ fun KasetkaApp(act: MainActivity) {
         ff = { Sfx.play(Sfx.Kind.CLICK); haptic(); MediaHub.next() },
         eject = {
             Sfx.play(Sfx.Kind.CLUNK); haptic(HapticFeedbackConstants.CONFIRM)
-            if (playing) MediaHub.pause()
+            MediaHub.eject()
             Store.setInserted(null)
         },
         hold = { dir ->
@@ -276,6 +269,14 @@ fun KasetkaApp(act: MainActivity) {
     MaterialTheme(colorScheme = scheme) {
         StarsLayer(enabled = s.stars, colors = pal.stars) {
             Box(Modifier.fillMaxSize().background(pal.bg).safeDrawingPadding()) {
+                // YouTube's player lives here, invisible, underneath the deck
+                AndroidView(factory = { c ->
+                    MediaHub.webView(c).also { w ->
+                        (w.parent as? ViewGroup)?.removeView(w)
+                        (w.context as? MutableContextWrapper)?.baseContext = c
+                    }
+                }, modifier = Modifier.size(220.dp).graphicsLayer { alpha = 0f })
+                Box(Modifier.fillMaxSize().background(pal.bg))
                 if (isCover) {
                     CoverView(pal, skin, inserted, labelArt, progress, playing, fast, title, sub, trk,
                         fmt(pos) + if (isActive && deck.duration > 0) " / " + fmt(deck.duration) else "",
@@ -286,8 +287,6 @@ fun KasetkaApp(act: MainActivity) {
                     Column(Modifier.fillMaxSize()) {
                         TopBar(pal, onCover = { forceCover = true }, onSettings = { showSettings = true },
                             onAdd = { addDialog = AddState(null, "") })
-                        if (!ytmInstalled) Notice(pal, "YouTube Music isn't installed", "Kasetka plays your tapes through the YouTube Music app. Install it from the Play Store.")
-                        else if (!deck.permission) PermissionCard(pal, ctx)
                         val shelf: @Composable (Modifier) -> Unit = { m ->
                             Shelf(tapes, insertedId, pal, m, onTap = { insert(it, false) },
                                 onLong = { addDialog = AddState(it, "") })
@@ -326,7 +325,7 @@ fun KasetkaApp(act: MainActivity) {
         }
         if (showTracks) {
             ModalBottomSheet(onDismissRequest = { showTracks = false }, containerColor = pal.panel2) {
-                TrackList(pal, deck, inserted, isActive)
+                TrackList(pal, deck, inserted, isActive, onDone = { showTracks = false })
             }
         }
         addDialog?.let { st -> AddTapeDialog(pal, st, onClose = { addDialog = null }) }
@@ -369,19 +368,6 @@ private fun Notice(pal: Pal, title: String, body: String, content: @Composable (
         Text(title, color = pal.text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
         Text(body, color = pal.muted, fontSize = 13.sp)
         content()
-    }
-}
-
-@Composable
-private fun PermissionCard(pal: Pal, ctx: Context) {
-    Notice(pal, "Connect YouTube Music",
-        "Kasetka needs Notification access so it can see and control what YouTube Music is playing. It doesn't read your notifications.") {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip(pal, "Allow access", primary = true) { openListenerSettings(ctx) }
-            Chip(pal, "Switch greyed out?") { openAppDetails(ctx) }
-        }
-        Text("If the switch is greyed out: tap \"Switch greyed out?\", then ⋮ (top right) → Allow restricted settings, then try again.",
-            color = pal.muted, fontSize = 12.sp)
     }
 }
 
@@ -693,34 +679,90 @@ private fun CoverView(pal: Pal, skin: Skin, tape: Tape?, art: Bitmap?, progress:
 // ───────────────────────── track list ─────────────────────────
 
 @Composable
-private fun TrackList(pal: Pal, deck: Deck, tape: Tape?, isActive: Boolean) {
-    Column(Modifier.fillMaxWidth().fillMaxHeight(0.8f).padding(horizontal = 16.dp)) {
-        Text(tape?.name ?: "Now playing", color = pal.text, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
-        Text(if (deck.queue.isNotEmpty()) "${deck.queue.size} songs · tap one to play it" else "", color = pal.muted, fontSize = 12.sp)
+private fun TrackList(pal: Pal, deck: Deck, tape: Tape?, isActive: Boolean, onDone: () -> Unit) {
+    val ctx = LocalContext.current
+    var picking by remember { mutableStateOf(false) }
+    val picked = remember { mutableStateListOf<String>() }
+    var mixName by remember { mutableStateOf("") }
+    Column(Modifier.fillMaxWidth().fillMaxHeight(0.85f).padding(horizontal = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(tape?.name ?: "Tracks", color = pal.text, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                Text(if (deck.queue.isNotEmpty()) "${deck.queue.size} songs · " + (if (picking) "tick the songs you want" else "tap one to play it") else "",
+                    color = pal.muted, fontSize = 12.sp)
+            }
+            if (isActive && deck.queue.isNotEmpty())
+                Chip(pal, if (picking) "Done" else "Pick songs", primary = picking) { picking = !picking; if (!picking) picked.clear() }
+        }
         Spacer(Modifier.height(8.dp))
-        if (!deck.connected || deck.queue.isEmpty()) {
-            Text(if (tape != null && !isActive) "Press PLAY first — the song list appears once the tape is running."
-                else "YouTube Music hasn't shared a song list yet. Start a tape and try again.",
+        if (!isActive || deck.queue.isEmpty()) {
+            Text(if (tape == null) "Put a tape in the deck first." else "Loading the songs… press PLAY if nothing shows up.",
                 color = pal.muted, modifier = Modifier.padding(vertical = 24.dp))
-        } else {
-            LazyColumn(Modifier.fillMaxSize()) {
-                itemsIndexed(deck.queue, key = { _, q -> q.id }) { i, q ->
-                    val now = q.id == deck.activeQueueId
-                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                        .background(if (now) pal.accent.copy(alpha = 0.2f) else Color.Transparent)
-                        .clickable { Sfx.play(Sfx.Kind.TICK); MediaHub.skipTo(q.id) }.padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("${i + 1}", Modifier.width(28.dp), color = pal.muted, fontFamily = FontFamily.Monospace,
-                            textAlign = TextAlign.End)
-                        val icon = q.icon
-                        if (icon != null) Image(icon.asImageBitmap(), null, Modifier.size(44.dp).clip(RoundedCornerShape(6.dp)),
-                            contentScale = ContentScale.Crop)
-                        else Box(Modifier.size(44.dp).clip(RoundedCornerShape(6.dp)).background(pal.line))
-                        Column(Modifier.weight(1f)) {
-                            Text(q.title, color = pal.text, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            if (q.subtitle.isNotEmpty()) Text(q.subtitle, color = pal.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
+            return@Column
+        }
+        LazyColumn(Modifier.weight(1f)) {
+            itemsIndexed(deck.queue, key = { _, q -> q.id }) { i, q ->
+                val now = q.id == deck.activeQueueId
+                val sel = q.mediaId != null && q.mediaId in picked
+                val thumb = rememberThumb(q.mediaId?.let { "https://i.ytimg.com/vi/$it/default.jpg" })
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    .background(if (now) pal.accent.copy(alpha = 0.2f) else Color.Transparent)
+                    .clickable {
+                        Sfx.play(Sfx.Kind.TICK)
+                        if (picking) q.mediaId?.let { if (it in picked) picked.remove(it) else picked.add(it) }
+                        else MediaHub.skipTo(q.id)
+                    }.padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("${i + 1}", Modifier.width(28.dp), color = pal.muted, fontFamily = FontFamily.Monospace, textAlign = TextAlign.End)
+                    if (thumb != null) Image(thumb.asImageBitmap(), null, Modifier.size(64.dp, 36.dp).clip(RoundedCornerShape(6.dp)),
+                        contentScale = ContentScale.Crop)
+                    else Box(Modifier.size(64.dp, 36.dp).clip(RoundedCornerShape(6.dp)).background(pal.line))
+                    Column(Modifier.weight(1f)) {
+                        Text(q.title, color = pal.text, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (q.subtitle.isNotEmpty()) Text(q.subtitle, color = pal.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
+                    if (picking) Box(Modifier.size(26.dp).clip(RoundedCornerShape(8.dp))
+                        .background(if (sel) pal.accent else Color.Transparent)
+                        .border(2.dp, if (sel) pal.accent else pal.muted, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                        if (sel) Text("✓", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        if (picking) {
+            val order = deck.queue.mapNotNull { it.mediaId }.filter { it in picked }
+            Column(Modifier.padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("${picked.size} picked", Modifier.weight(1f), color = pal.text, fontWeight = FontWeight.Bold)
+                    Chip(pal, "Pick all") {
+                        val all = deck.queue.mapNotNull { it.mediaId }
+                        if (picked.size == all.size) picked.clear() else { picked.clear(); picked.addAll(all) }
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(mixName, { mixName = it }, Modifier.weight(1f), singleLine = true,
+                        placeholder = { Text("New tape label") })
+                    Chip(pal, "⏺ Record", primary = true) {
+                        if (order.isEmpty()) { toast(ctx, "Pick some songs first"); return@Chip }
+                        val name = mixName.trim().ifBlank { "Mixtape ${Store.tapes.value.count { it.videos != null } + 1}" }
+                        Store.add(Tape(id = "t" + System.currentTimeMillis(), name = name, videos = order, color = Store.nextColor(),
+                            cover = "https://i.ytimg.com/vi/${order.first()}/hqdefault.jpg", count = order.size))
+                        Sfx.play(Sfx.Kind.CLUNK)
+                        toast(ctx, "Recorded ${order.size} songs onto “$name” 📼")
+                        picked.clear(); picking = false; mixName = ""
+                    }
+                }
+                Chip(pal, "Each picked song → its own tape", modifier = Modifier.fillMaxWidth()) {
+                    if (order.isEmpty()) { toast(ctx, "Pick some songs first"); return@Chip }
+                    val made = order.mapIndexed { k, id ->
+                        val q = deck.queue.first { it.mediaId == id }
+                        Tape(id = "t${System.currentTimeMillis()}_$k", name = q.title.take(40), video = id,
+                            color = PALETTE[(Store.tapes.value.size + k) % PALETTE.size], cover = "https://i.ytimg.com/vi/$id/hqdefault.jpg")
+                    }
+                    Store.setTapes(made + Store.tapes.value)
+                    Sfx.play(Sfx.Kind.CLUNK)
+                    toast(ctx, "Made ${made.size} new tapes 📼")
+                    picked.clear(); picking = false
                 }
             }
         }
@@ -750,6 +792,9 @@ private fun AddTapeDialog(pal: Pal, st: AddState, onClose: () -> Unit) {
         }
         val p = parseLink(link)
         if (p.error != null) { err = p.error; return }
+        if (p.list == "LM" || p.list == "LL") {
+            err = "Liked Music only plays inside the YouTube Music app. Save those songs into a playlist and share that."; return
+        }
         val autoName = name.isBlank() && p.list != null && p.list != "LM"
         val label = name.trim().ifBlank { if (p.list == "LM") "Liked Music" else "Tape ${Store.tapes.value.size + 1}" }
         if (t != null) {
@@ -780,7 +825,7 @@ private fun AddTapeDialog(pal: Pal, st: AddState, onClose: () -> Unit) {
                 OutlinedTextField(name, { name = it }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                     label = { Text("Label (written on the tape)") })
                 err?.let { Text(it, color = Color(0xFFFF5A5A), fontSize = 13.sp, fontWeight = FontWeight.Bold) }
-                Text("In YouTube Music: open a playlist or album → Share → Kasetka adds it straight away. Liked Music works too (link with list=LM).",
+                Text("In YouTube Music: open a playlist or album → Share → Kasetka adds it straight away. Leave the label empty to use the playlist's name.",
                     color = pal.muted, fontSize = 12.sp)
                 if (t != null) TextButton(onClick = { Store.remove(t.id); onClose() }) {
                     Text("Remove tape", color = Color(0xFFFF5A5A))
@@ -829,15 +874,14 @@ private fun SettingsDialog(pal: Pal, s: Settings, permission: Boolean, onClose: 
                 HorizontalDivider(color = pal.line)
                 SetRow(pal, "Fold to play", "Closing the phone starts the tape", s.foldToPlay) { set(s.copy(foldToPlay = it)) }
                 SetRow(pal, "Pause when unfolding", null, s.pauseOnUnfold) { set(s.copy(pauseOnUnfold = it)) }
-                SetRow(pal, "Jump back to the deck", "After YouTube Music starts a tape, come straight back here", s.returnToDeck) { set(s.copy(returnToDeck = it)) }
                 SetRow(pal, "Keep cover screen on", "While a tape plays on the folded screen", s.keepScreenOn) { set(s.copy(keepScreenOn = it)) }
                 SetRow(pal, "Tape hiss", null, s.hiss) { set(s.copy(hiss = it)) }
                 SetRow(pal, "Key clicks", null, s.clicks) { set(s.copy(clicks = it)) }
                 SetRow(pal, "Haptics", null, s.haptics) { set(s.copy(haptics = it)) }
                 SetRow(pal, "Stars on touch", null, s.stars) { set(s.copy(stars = it)) }
                 HorizontalDivider(color = pal.line)
-                Text("YouTube Music: " + if (permission) "connected ✓" else "not connected", color = pal.text, fontWeight = FontWeight.Bold)
-                Chip(pal, "Notification access settings") { openListenerSettings(ctx) }
+                Text("Songs play inside Kasetka with YouTube's player — it keeps going when the app is minimised, with controls on the lock screen.",
+                    color = pal.muted, fontSize = 12.sp)
                 HorizontalDivider(color = pal.line)
                 Text("Bring tapes from the web version", color = pal.text, fontWeight = FontWeight.Bold)
                 Text("In the web Kasetka: ⚙ → Copy backup, then paste here.", color = pal.muted, fontSize = 12.sp)
