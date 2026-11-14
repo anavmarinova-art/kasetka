@@ -6,6 +6,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#121318">
 <title>Kasetka — fold-to-play tape deck</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&family=Nunito:wght@400;700;800&family=Permanent+Marker&family=VT323&display=swap" rel="stylesheet">
@@ -972,6 +975,7 @@ if (location.protocol === 'file:') { const b = $('#banner'); b.textContent = 'Yo
 const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api';
 s.onerror = () => { const b = $('#banner'); b.textContent = "Couldn't reach YouTube — check your connection."; b.classList.add('show'); };
 document.head.appendChild(s);
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 setTimeout(() => { if (!playerReady && location.protocol !== 'file:') { const b = $('#banner'); if (!b.classList.contains('show')) { b.textContent = 'Still connecting to YouTube…'; b.classList.add('show'); } } }, 9000);
 })();
 </script>
