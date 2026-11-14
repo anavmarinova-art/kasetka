@@ -16,6 +16,8 @@ import android.os.Looper
 import android.os.SystemClock
 import android.service.notification.NotificationListenerService
 import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.core.app.NotificationManagerCompat
 import androidx.glance.appwidget.updateAll
 import kotlinx.coroutines.CoroutineScope
@@ -147,7 +149,10 @@ object MediaHub {
 
     private fun changed(prev: Deck) {
         val now = state.value
-        if (now.mediaId != prev.mediaId) Store.rememberVideo(now.mediaId)
+        if (now.mediaId != prev.mediaId) {
+            if (Store.awaitFrom.value != null && now.mediaId != Store.awaitFrom.value) Store.awaitFrom.value = null
+            if (Store.awaitFrom.value == null) Store.rememberVideo(now.mediaId)
+        }
         if (now.title != prev.title || now.playing != prev.playing || now.connected != prev.connected ||
             now.art !== prev.art || now.permission != prev.permission) refreshWidget()
     }
@@ -182,11 +187,26 @@ object Launcher {
             .setPackage(MediaHub.YTM)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
-    fun start(activity: Activity, t: Tape) {
+    fun start(activity: ComponentActivity, tape: Tape) {
+        activity.lifecycleScope.launch {
+            val t = Store.ensureMeta(tape, rename = false)
+            // Until YouTube Music actually switches songs, don't treat what's playing as this tape
+            if (Store.activeTapeId.value != t.id) {
+                Store.awaitFrom.value = MediaHub.state.value.mediaId ?: ""
+                Store.scope.launch { delay(12000); Store.awaitFrom.value = null }
+            }
+            openInYtm(activity, t)
+        }
+    }
+
+    private fun openInYtm(activity: Activity, t: Tape) {
         Store.markStarted(t.id)
         val yt = ytIntent(t)
         try {
-            if (Store.settings.value.returnToDeck) {
+            if (!t.canAutoplay) {
+                activity.startActivity(yt)
+                Toast.makeText(activity, "Tap ▶ in YouTube Music to start this tape", Toast.LENGTH_LONG).show()
+            } else if (Store.settings.value.returnToDeck) {
                 val back = Intent(activity, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
                 activity.startActivities(arrayOf(yt, back))

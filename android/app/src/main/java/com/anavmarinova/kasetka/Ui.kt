@@ -146,6 +146,7 @@ fun KasetkaApp(act: MainActivity) {
     val visible by act.visible.collectAsState()
     val pendingPlay by Store.pendingPlay.collectAsState()
     val pendingShare by Store.pendingShare.collectAsState()
+    val awaitFrom by Store.awaitFrom.collectAsState()
 
     val pal = palette(s)
     val skin = skinFor(s)
@@ -157,7 +158,7 @@ fun KasetkaApp(act: MainActivity) {
     var forceCover by remember { mutableStateOf(false) }
     val isCover = forceCover || cfg.smallestScreenWidthDp < 560 || half
     val inserted = tapes.find { it.id == insertedId }
-    val isActive = inserted != null && inserted.id == activeId && deck.connected
+    val isActive = inserted != null && inserted.id == activeId && deck.connected && awaitFrom == null
 
     var addDialog by remember { mutableStateOf<AddState?>(null) }
     var showSettings by remember { mutableStateOf(false) }
@@ -749,15 +750,20 @@ private fun AddTapeDialog(pal: Pal, st: AddState, onClose: () -> Unit) {
         }
         val p = parseLink(link)
         if (p.error != null) { err = p.error; return }
+        val autoName = name.isBlank() && p.list != null && p.list != "LM"
         val label = name.trim().ifBlank { if (p.list == "LM") "Liked Music" else "Tape ${Store.tapes.value.size + 1}" }
         if (t != null) {
             val changed = t.list != p.list || t.video != p.video || t.videos != null
             Store.update(t.id) {
-                if (changed) it.copy(name = label, list = p.list, video = p.video, videos = null, lastVideo = null, cover = null, count = null)
+                if (changed) it.copy(name = label, list = p.list, video = p.video, videos = null, lastVideo = null,
+                    cover = null, count = null, firstVideo = null)
                 else it.copy(name = label)
             }
+            if (changed) Store.tape(t.id)?.let { nt -> Store.scope.launch { Store.ensureMeta(nt, rename = false) } }
         } else {
-            Store.add(Tape(id = "t" + System.currentTimeMillis(), name = label, list = p.list, video = p.video, color = Store.nextColor()))
+            val nt = Tape(id = "t" + System.currentTimeMillis(), name = label, list = p.list, video = p.video, color = Store.nextColor())
+            Store.add(nt)
+            Store.scope.launch { Store.ensureMeta(nt, rename = autoName) }
             toast(ctx, "Tape on the shelf 📼")
         }
         Sfx.play(Sfx.Kind.CLUNK)

@@ -54,7 +54,7 @@ class KasetkaWidget : GlanceAppWidget() {
         val s = Store.settings.value
         val pal = palette(s)
         val inserted = Store.tape(Store.insertedId.value)
-        val active = inserted != null && inserted.id == Store.activeTapeId.value && d.connected
+        val active = inserted != null && inserted.id == Store.activeTapeId.value && d.connected && Store.awaitFrom.value == null
         val qIdx = d.queue.indexOfFirst { it.id == d.activeQueueId }
         val n = d.queue.size.coerceAtLeast(1)
         val progress = if (active && d.duration > 0)

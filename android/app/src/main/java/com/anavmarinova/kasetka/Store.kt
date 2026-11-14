@@ -3,7 +3,15 @@ package com.anavmarinova.kasetka
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -30,19 +38,24 @@ data class Tape(
     val lastPlayed: Long = 0,
     val lastVideo: String? = null,
     val count: Int? = null,
+    /** First song of a playlist, looked up once so YouTube Music can start exactly this playlist. */
+    val firstVideo: String? = null,
 ) {
     val trackCount: Int? get() = count ?: videos?.size
 
     /** Link that YouTube Music opens and starts playing. Playlists resume at the last song heard. */
+    /** False when YouTube Music can only show the playlist page (e.g. Liked Music) and the user taps play there. */
+    val canAutoplay: Boolean get() = list == null || (lastVideo ?: firstVideo) != null
+
     fun playUrl(): String = when {
-        list != null && lastVideo != null -> "https://music.youtube.com/watch?v=$lastVideo&list=$list"
-        list != null -> "https://music.youtube.com/watch?list=$list"
+        list != null && (lastVideo ?: firstVideo) != null -> "https://music.youtube.com/watch?v=${lastVideo ?: firstVideo}&list=$list"
+        list != null -> "https://music.youtube.com/playlist?list=$list"
         !videos.isNullOrEmpty() -> "https://music.youtube.com/watch_videos?video_ids=${videos.joinToString(",")}"
         else -> "https://music.youtube.com/watch?v=$video"
     }
 
     fun coverUrl(): String? = cover
-        ?: (lastVideo ?: video ?: videos?.firstOrNull())?.let { "https://i.ytimg.com/vi/$it/hqdefault.jpg" }
+        ?: (lastVideo ?: firstVideo ?: video ?: videos?.firstOrNull())?.let { "https://i.ytimg.com/vi/$it/hqdefault.jpg" }
 
     fun sameSource(o: Tape) = list == o.list && video == o.video && videos == o.videos
 
@@ -54,6 +67,7 @@ data class Tape(
         put("added", added); put("lastPlayed", lastPlayed)
         putOpt("lastVideo", lastVideo)
         if (count != null) put("count", count)
+        putOpt("firstVideo", firstVideo)
     }
 
     companion object {
@@ -75,6 +89,7 @@ data class Tape(
                 lastPlayed = o.optLong("lastPlayed", 0),
                 lastVideo = o.str("lastVideo"),
                 count = if (o.has("count") && !o.isNull("count")) o.optInt("count") else null,
+                firstVideo = o.str("firstVideo"),
             )
         }
     }
@@ -155,6 +170,9 @@ object Store {
     val insertedId = MutableStateFlow<String?>(null)
     /** The tape YouTube Music was last told to play. */
     val activeTapeId = MutableStateFlow<String?>(null)
+    /** While set, YouTube Music is still switching over from this song to a newly started tape. */
+    val awaitFrom = MutableStateFlow<String?>(null)
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     val pendingShare = MutableStateFlow<String?>(null)
     val pendingPlay = MutableStateFlow<String?>(null)
 
@@ -166,6 +184,38 @@ object Store {
         settings.value = Settings.fromJson(p.getString("settings", "{}"))
         insertedId.value = p.getString("inserted", null)
         activeTapeId.value = p.getString("active", null)
+        if (!p.getBoolean("fix_resume_v2", false)) {
+            // Earlier builds could save the wrong resume song / track count; start those fresh once.
+            setTapes(tapes.value.map { it.copy(lastVideo = null, count = it.videos?.size) })
+            p.edit().putBoolean("fix_resume_v2", true).apply()
+        }
+        // Look up first song / name / cover for playlist tapes that don't have it yet
+        scope.launch { tapes.value.filter { it.list != null && it.firstVideo == null }.forEach { ensureMeta(it, rename = false) } }
+    }
+
+    /** Fetches a playlist's title and first song from YouTube's public oEmbed endpoint and saves them on the tape. */
+    suspend fun ensureMeta(t: Tape, rename: Boolean): Tape {
+        val list = t.list ?: return t
+        if (t.firstVideo != null || list == "LM" || list == "LL") return t
+        val meta = withContext(Dispatchers.IO) {
+            try {
+                val u = "https://www.youtube.com/oembed?format=json&url=" +
+                    URLEncoder.encode("https://www.youtube.com/playlist?list=$list", "UTF-8")
+                val c = URL(u).openConnection() as HttpURLConnection
+                c.connectTimeout = 8000; c.readTimeout = 8000
+                if (c.responseCode != 200) null else JSONObject(c.inputStream.bufferedReader().readText())
+            } catch (e: Exception) { null }
+        } ?: return t
+        val first = Regex("/vi/([A-Za-z0-9_-]{11})/").find(meta.optString("thumbnail_url"))?.groupValues?.get(1)
+        val title = meta.optString("title").takeIf { it.isNotBlank() }
+        update(t.id) {
+            it.copy(
+                firstVideo = first ?: it.firstVideo,
+                cover = it.cover ?: first?.let { v -> "https://i.ytimg.com/vi/$v/hqdefault.jpg" },
+                name = if (rename && title != null) title.take(40) else it.name,
+            )
+        }
+        return tape(t.id) ?: t
     }
 
     private fun parseTapes(s: String?): List<Tape> = try {
