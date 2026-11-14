@@ -202,9 +202,17 @@ object MediaHub {
             main.post {
                 val id = state.value.tapeId ?: return@post
                 Sfx.play(Sfx.Kind.CLUNK)
-                Store.saveResume(id, 0, 0f)
+                Store.saveResume(id, 0, 0f)          // rewound, ready for next time
                 val ctx = appContext ?: return@post
-                Store.tape(id)?.let { loadTape(ctx, it, play = false) }
+                val shelf = Store.tapes.value
+                val i = shelf.indexOfFirst { it.id == id }
+                val next = if (Store.settings.value.autoNext && shelf.size > 1 && i >= 0) shelf[(i + 1) % shelf.size] else null
+                if (next != null) {
+                    // Flip to the next tape on the shelf, like a tape changer
+                    log("tape ended, playing next: ${next.name}")
+                    Store.setInserted(next.id)
+                    loadTape(ctx, next, play = true)
+                } else Store.tape(id)?.let { loadTape(ctx, it, play = false) }
             }
         }
     }

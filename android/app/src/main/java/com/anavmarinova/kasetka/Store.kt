@@ -115,6 +115,8 @@ data class Settings(
     val stars: Boolean = true,
     /** Troubleshooting: show the hidden YouTube player and its log. */
     val showPlayer: Boolean = false,
+    /** When a tape ends, the next tape on the shelf starts by itself. */
+    val autoNext: Boolean = true,
 ) {
     fun toJson() = JSONObject().apply {
         put("theme", theme); put("whimsy", whimsy); put("skin", skin)
@@ -122,6 +124,7 @@ data class Settings(
         put("returnToDeck", returnToDeck); put("keepScreenOn", keepScreenOn)
         put("hiss", hiss); put("clicks", clicks); put("haptics", haptics); put("stars", stars)
         put("showPlayer", showPlayer)
+        put("autoNext", autoNext)
     }
 
     companion object {
@@ -141,6 +144,7 @@ data class Settings(
                 haptics = o.optBoolean("haptics", d.haptics),
                 stars = o.optBoolean("stars", d.stars),
                 showPlayer = o.optBoolean("showPlayer", d.showPlayer),
+                autoNext = o.optBoolean("autoNext", d.autoNext),
             )
         }
     }

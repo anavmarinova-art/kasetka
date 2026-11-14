@@ -892,6 +892,7 @@ private fun SettingsDialog(pal: Pal, s: Settings, permission: Boolean, onClose: 
                 HorizontalDivider(color = pal.line)
                 SetRow(pal, "Fold to play", "Closing the phone starts the tape", s.foldToPlay) { set(s.copy(foldToPlay = it)) }
                 SetRow(pal, "Pause when unfolding", null, s.pauseOnUnfold) { set(s.copy(pauseOnUnfold = it)) }
+                SetRow(pal, "Auto-play next tape", "When a tape ends, the next one on the shelf starts", s.autoNext) { set(s.copy(autoNext = it)) }
                 SetRow(pal, "Keep cover screen on", "While a tape plays on the folded screen", s.keepScreenOn) { set(s.copy(keepScreenOn = it)) }
                 SetRow(pal, "Tape hiss", null, s.hiss) { set(s.copy(hiss = it)) }
                 SetRow(pal, "Key clicks", null, s.clicks) { set(s.copy(clicks = it)) }
