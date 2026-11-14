@@ -13,6 +13,7 @@ import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.clickable
+import androidx.glance.action.actionStartActivity as startActivityOf
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.action.ActionCallback
@@ -84,7 +85,7 @@ private fun WidgetBody(context: Context, pal: Pal, cassette: android.graphics.Bi
     Column(GlanceModifier.fillMaxSize().background(pal.deckBottom).cornerRadius(24.dp).padding(12.dp)) {
         Row(GlanceModifier.fillMaxWidth().defaultWeight(), verticalAlignment = Alignment.CenterVertically) {
             Image(ImageProvider(cassette), "Cassette", GlanceModifier.width(150.dp).height(95.dp)
-                .clickable(actionStartActivity<MainActivity>()), contentScale = ContentScale.Fit)
+                .clickable(startActivityOf<MainActivity>()), contentScale = ContentScale.Fit)
             Spacer(GlanceModifier.width(10.dp))
             Column(GlanceModifier.defaultWeight()) {
                 Text(if (playing) "● PLAYING" else "● STOPPED",
