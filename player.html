@@ -13,12 +13,12 @@
 // drives it through window.kp; state is reported back through the Android bridge.
 const A = window.Android || { onState(){}, onQueue(){}, onReady(){}, onError(){}, onEnded(){} };
 let p = null, apiReady = false, ready = false, wantPlay = false, lastIds = '', want = null, watchdog = null;
-let jumpTo = 0, seekAfter = 0, current = null;
+let jumpTo = 0, seekAfter = 0, current = null, blockedRun = 0;
 
 // A brand-new YouTube player for every tape, with the playlist given the standard embed way
 // (playlist inside the player settings). Loading playlists into an existing player fails with error 2.
 function create(t) {
-  ready = false; current = t;
+  ready = false; current = t; blockedRun = 0;
   if (p) { try { p.destroy(); } catch (_) {} p = null; }
   document.body.innerHTML = '<div id="yt"></div>';
   clearTimeout(watchdog);
@@ -46,6 +46,7 @@ function create(t) {
       let v = ''; try { v = (p.getVideoData() || {}).video_id || ''; } catch (_) {}
       let n = 0; try { n = (p.getPlaylist() || []).length; } catch (_) {}
       console.log('state ' + e.data + ' video ' + v + ' songs ' + n);
+      if (e.data === 1) blockedRun = 0;
       if (e.data === 1 && seekAfter > 0) { const s = seekAfter; seekAfter = 0; p.seekTo(s, true); }
       if (e.data === 0) {
         let l = null, i = 0;
@@ -55,10 +56,13 @@ function create(t) {
       push();
     },
     onError(e) {
+      let v = ''; try { v = (p.getVideoData() || {}).video_id || ''; } catch (_) {}
+      console.log('error ' + e.data + ' on video ' + v);
       A.onError(e.data);
-      if ([100, 101, 150].includes(e.data)) {
-        let l = null; try { l = p.getPlaylist(); } catch (_) {}
-        if (l && p.getPlaylistIndex() < l.length - 1) setTimeout(() => p.nextVideo(), 800);
+      if ([100, 101, 150, 152, 153].includes(e.data) && (t.list || (t.videos && t.videos.length > 1))) {
+        blockedRun++;
+        if (blockedRun >= 6) { A.onError(-5); return; }   // many songs in a row are blocked: stop and say so
+        setTimeout(() => { try { p.nextVideo(); } catch (_) {} }, 600);
       }
     }
   };

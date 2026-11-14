@@ -175,7 +175,8 @@ object MediaHub {
                 -2 -> "This tape didn't load. Check the link — the playlist has to be Public or Unlisted."
                 -3 -> "This link is a YouTube Mix (a radio), not a playlist. Share a playlist or album instead."
                 -4 -> "Couldn't load the playlist, so playing the song from the link instead."
-                100, 101, 150 -> "This song can't play outside YouTube."
+                -5 -> "YouTube won't let the songs on this tape play inside other apps (the music labels block it)."
+                100, 101, 150, 152, 153 -> "Skipping a song YouTube won't play inside apps."
                 else -> null
             }
             if (msg != null) main.post { state.value = state.value.copy(error = msg) }
