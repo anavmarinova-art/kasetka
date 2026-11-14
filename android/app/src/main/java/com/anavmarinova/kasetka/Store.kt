@@ -260,6 +260,15 @@ object Store {
         update(t.id) { it.copy(lastVideo = videoId) }
     }
 
+    fun clearActive() { activeTapeId.value = null; persist() }
+
+    fun learnFirstVideo(videoId: String?) {
+        if (videoId == null || !VIDEO_ID.matches(videoId)) return
+        val t = tape(activeTapeId.value) ?: return
+        if (t.list == null || t.firstVideo != null) return
+        update(t.id) { it.copy(firstVideo = videoId, cover = it.cover ?: "https://i.ytimg.com/vi/$videoId/hqdefault.jpg") }
+    }
+
     /** Import the backup text from the web version (Settings → Copy backup). */
     fun importBackup(text: String): Int {
         val arr = try {

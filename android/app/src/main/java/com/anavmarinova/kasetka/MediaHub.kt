@@ -37,7 +37,7 @@ class KasetkaListener : NotificationListenerService() {
     }
 }
 
-data class QItem(val id: Long, val title: String, val subtitle: String, val icon: Bitmap?)
+data class QItem(val id: Long, val title: String, val subtitle: String, val icon: Bitmap?, val mediaId: String? = null)
 
 data class Deck(
     val permission: Boolean = false,
@@ -123,7 +123,7 @@ object MediaHub {
         val q = try {
             c.queue?.map {
                 QItem(it.queueId, it.description.title?.toString() ?: "",
-                    it.description.subtitle?.toString() ?: "", it.description.iconBitmap)
+                    it.description.subtitle?.toString() ?: "", it.description.iconBitmap, it.description.mediaId)
             }
         } catch (e: Exception) { null } ?: emptyList()
         state.value = Deck(
@@ -153,6 +153,10 @@ object MediaHub {
             if (Store.awaitFrom.value != null && now.mediaId != Store.awaitFrom.value) Store.awaitFrom.value = null
             if (Store.awaitFrom.value == null) Store.rememberVideo(now.mediaId)
         }
+        // Learn a playlist tape's first song from YouTube Music's queue (works for private playlists too)
+        if (Store.awaitFrom.value == null && now.queue.isNotEmpty() &&
+            (now.queue.size != prev.queue.size || now.queue.firstOrNull()?.mediaId != prev.queue.firstOrNull()?.mediaId))
+            Store.learnFirstVideo(now.queue.first().mediaId)
         if (now.title != prev.title || now.playing != prev.playing || now.connected != prev.connected ||
             now.art !== prev.art || now.permission != prev.permission) refreshWidget()
     }
@@ -192,8 +196,16 @@ object Launcher {
             val t = Store.ensureMeta(tape, rename = false)
             // Until YouTube Music actually switches songs, don't treat what's playing as this tape
             if (Store.activeTapeId.value != t.id) {
-                Store.awaitFrom.value = MediaHub.state.value.mediaId ?: ""
-                Store.scope.launch { delay(12000); Store.awaitFrom.value = null }
+                val from = MediaHub.state.value.mediaId ?: ""
+                Store.awaitFrom.value = from
+                Store.scope.launch {
+                    delay(12000)
+                    // YouTube Music never switched: what's playing isn't this tape, so don't claim it.
+                    if (Store.awaitFrom.value == from && Store.activeTapeId.value == t.id) {
+                        Store.awaitFrom.value = null
+                        Store.clearActive()
+                    }
+                }
             }
             openInYtm(activity, t)
         }
@@ -201,18 +213,28 @@ object Launcher {
 
     private fun openInYtm(activity: Activity, t: Tape) {
         Store.markStarted(t.id)
-        val yt = ytIntent(t)
+        val app = activity.applicationContext
         try {
-            if (!t.canAutoplay) {
-                activity.startActivity(yt)
-                Toast.makeText(activity, "Tap ▶ in YouTube Music to start this tape", Toast.LENGTH_LONG).show()
-            } else if (Store.settings.value.returnToDeck) {
-                val back = Intent(activity, MainActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                activity.startActivities(arrayOf(yt, back))
-            } else activity.startActivity(yt)
+            activity.startActivity(ytIntent(t))
         } catch (e: ActivityNotFoundException) {
             Toast.makeText(activity, "Install YouTube Music to play tapes", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (!t.canAutoplay) {
+            Toast.makeText(activity, "Tap ▶ Play in YouTube Music. After that Kasetka starts this tape by itself.",
+                Toast.LENGTH_LONG).show()
+            return
+        }
+        if (!Store.settings.value.returnToDeck) return
+        // Give YouTube Music time to switch to the new tape, then hop back to the deck.
+        Store.scope.launch {
+            val until = SystemClock.elapsedRealtime() + 6000
+            while (Store.awaitFrom.value != null && SystemClock.elapsedRealtime() < until) delay(200)
+            delay(700)
+            try {
+                app.startActivity(Intent(app, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+            } catch (e: Exception) { }
         }
     }
 }
