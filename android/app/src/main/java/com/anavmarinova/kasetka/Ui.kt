@@ -272,14 +272,19 @@ fun KasetkaApp(act: MainActivity) {
     MaterialTheme(colorScheme = scheme) {
         StarsLayer(enabled = s.stars, colors = pal.stars) {
             Box(Modifier.fillMaxSize().background(pal.bg).safeDrawingPadding()) {
-                // YouTube's player lives here, invisible, underneath the deck
-                AndroidView(factory = { c ->
-                    MediaHub.webView(c).also { w ->
-                        (w.parent as? ViewGroup)?.removeView(w)
-                        (w.context as? MutableContextWrapper)?.baseContext = c
-                    }
-                }, modifier = Modifier.size(220.dp).graphicsLayer { alpha = 0f })
-                Box(Modifier.fillMaxSize().background(pal.bg))
+                // YouTube's player lives here, invisible, underneath the deck (visible when troubleshooting)
+                val playerView: @Composable (Modifier) -> Unit = { m ->
+                    AndroidView(factory = { c ->
+                        MediaHub.webView(c).also { w ->
+                            (w.parent as? ViewGroup)?.removeView(w)
+                            (w.context as? MutableContextWrapper)?.baseContext = c
+                        }
+                    }, modifier = m)
+                }
+                if (!s.showPlayer) {
+                    playerView(Modifier.size(220.dp).graphicsLayer { alpha = 0f })
+                    Box(Modifier.fillMaxSize().background(pal.bg))
+                }
                 if (isCover) {
                     CoverView(pal, skin, inserted, labelArt, progress, playing, fast, title, sub, trk,
                         fmt(pos) + if (isActive && deck.duration > 0) " / " + fmt(deck.duration) else "",
@@ -318,6 +323,16 @@ fun KasetkaApp(act: MainActivity) {
             }
         }
 
+        if (s.showPlayer) {
+            Box(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp), contentAlignment = Alignment.BottomStart) {
+                AndroidView(factory = { c ->
+                    MediaHub.webView(c).also { w ->
+                        (w.parent as? ViewGroup)?.removeView(w)
+                        (w.context as? MutableContextWrapper)?.baseContext = c
+                    }
+                }, modifier = Modifier.size(320.dp, 200.dp).clip(RoundedCornerShape(12.dp)))
+            }
+        }
         if (showTapes) {
             ModalBottomSheet(onDismissRequest = { showTapes = false }, containerColor = pal.panel2) {
                 Shelf(tapes, insertedId, pal, Modifier.fillMaxWidth().fillMaxHeight(0.8f).padding(horizontal = 12.dp),
@@ -882,6 +897,14 @@ private fun SettingsDialog(pal: Pal, s: Settings, permission: Boolean, onClose: 
                 SetRow(pal, "Key clicks", null, s.clicks) { set(s.copy(clicks = it)) }
                 SetRow(pal, "Haptics", null, s.haptics) { set(s.copy(haptics = it)) }
                 SetRow(pal, "Stars on touch", null, s.stars) { set(s.copy(stars = it)) }
+                SetRow(pal, "Show YouTube player", "Troubleshooting: shows the hidden player and what it's doing", s.showPlayer) { set(s.copy(showPlayer = it)) }
+                if (s.showPlayer) {
+                    val lines by MediaHub.log.collectAsState()
+                    Text("Player log", color = pal.text, fontWeight = FontWeight.Bold)
+                    Text(if (lines.isEmpty()) "(nothing yet — put a tape in and press PLAY)" else lines.takeLast(18).joinToString("\n"),
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color.Black.copy(alpha = 0.35f)).padding(8.dp),
+                        color = pal.text, fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 13.sp)
+                }
                 HorizontalDivider(color = pal.line)
                 Text("Songs play inside Kasetka with YouTube's player — it keeps going when the app is minimised, with controls on the lock screen.",
                     color = pal.muted, fontSize = 12.sp)

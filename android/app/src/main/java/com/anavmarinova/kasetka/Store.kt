@@ -113,12 +113,15 @@ data class Settings(
     val clicks: Boolean = true,
     val haptics: Boolean = true,
     val stars: Boolean = true,
+    /** Troubleshooting: show the hidden YouTube player and its log. */
+    val showPlayer: Boolean = false,
 ) {
     fun toJson() = JSONObject().apply {
         put("theme", theme); put("whimsy", whimsy); put("skin", skin)
         put("foldToPlay", foldToPlay); put("pauseOnUnfold", pauseOnUnfold)
         put("returnToDeck", returnToDeck); put("keepScreenOn", keepScreenOn)
         put("hiss", hiss); put("clicks", clicks); put("haptics", haptics); put("stars", stars)
+        put("showPlayer", showPlayer)
     }
 
     companion object {
@@ -137,6 +140,7 @@ data class Settings(
                 clicks = o.optBoolean("clicks", d.clicks),
                 haptics = o.optBoolean("haptics", d.haptics),
                 stars = o.optBoolean("stars", d.stars),
+                showPlayer = o.optBoolean("showPlayer", d.showPlayer),
             )
         }
     }

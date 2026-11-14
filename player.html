@@ -25,6 +25,9 @@ function create(after) {
     events: {
       onReady() { ready = true; A.onReady(); if (after) after(); },
       onStateChange(e) {
+        let v = ''; try { v = (p.getVideoData() || {}).video_id || ''; } catch (_) {}
+        let n = 0; try { n = (p.getPlaylist() || []).length; } catch (_) {}
+        console.log('state ' + e.data + ' video ' + v + ' songs ' + n);
         if (e.data === 0) {
           let l = null, i = 0;
           try { l = p.getPlaylist(); i = p.getPlaylistIndex(); } catch (_) {}
@@ -49,6 +52,7 @@ function onYouTubeIframeAPIReady() {
 }
 
 function start(t) {
+  console.log('start ' + JSON.stringify(t));
   if (wantPlay) { t = Object.assign({}, t, { play: true }); wantPlay = false; }
   const i = t.index || 0, s = t.time || 0;
   // YouTube "Mix" radios (list=RD…) can't be loaded as playlists — play the song from the link instead.

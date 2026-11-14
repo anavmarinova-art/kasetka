@@ -70,6 +70,13 @@ object MediaHub {
 
     val alive: Boolean get() = web != null
 
+    /** Recent player events, shown in Settings when troubleshooting. */
+    val log = MutableStateFlow<List<String>>(emptyList())
+    fun log(msg: String) {
+        val t = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+        main.post { log.value = (log.value + "$t  $msg").takeLast(40) }
+    }
+
     fun connect(ctx: Context) { appContext = ctx.applicationContext }
 
     /** The single player view. The activity shows it (invisibly) so the page renders; it survives the activity. */
@@ -81,8 +88,17 @@ object MediaHub {
         w.settings.javaScriptEnabled = true
         w.settings.domStorageEnabled = true
         w.settings.mediaPlaybackRequiresUserGesture = false
-        w.webChromeClient = WebChromeClient()
-        w.webViewClient = WebViewClient()
+        w.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(m: android.webkit.ConsoleMessage): Boolean {
+                log("js: ${m.message()}"); return true
+            }
+        }
+        w.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) { log("page loaded: $url") }
+            override fun onReceivedError(view: WebView?, req: android.webkit.WebResourceRequest?, err: android.webkit.WebResourceError?) {
+                if (req?.isForMainFrame == true) log("page error: ${err?.description}")
+            }
+        }
         w.addJavascriptInterface(Bridge, "Android")
         w.loadUrl(PLAYER_URL)
         web = w
@@ -90,7 +106,8 @@ object MediaHub {
     }
 
     private fun js(code: String) {
-        main.post { web?.evaluateJavascript("window.kp && kp.$code", null) }
+        log("→ " + code.take(120))
+        main.post { web?.evaluateJavascript("(window.kp ? (kp.$code, 'ok') : 'player page not ready')") { r -> if (r != "\"ok\"") log("← $r") } }
     }
 
     // ── commands ──
@@ -148,10 +165,11 @@ object MediaHub {
 
     // ── reports from the player page ──
     private object Bridge {
-        @JavascriptInterface fun onReady() { main.post { state.value = state.value.copy(connected = true); refreshWidget() } }
+        @JavascriptInterface fun onReady() { log("YouTube player ready"); main.post { state.value = state.value.copy(connected = true); refreshWidget() } }
         @JavascriptInterface fun onState(json: String) { main.post { applyState(json) } }
         @JavascriptInterface fun onQueue(json: String) { main.post { applyQueue(json) } }
         @JavascriptInterface fun onError(code: Int) {
+            log("YouTube error $code")
             val msg = when (code) {
                 -2 -> "This tape didn't load. Check the link — the playlist has to be Public or Unlisted."
                 -3 -> "This link is a YouTube Mix (a radio), not a playlist. Share a playlist or album instead."
