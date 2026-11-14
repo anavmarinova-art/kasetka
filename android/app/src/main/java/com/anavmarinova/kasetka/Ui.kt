@@ -813,7 +813,7 @@ private fun AddTapeDialog(pal: Pal, st: AddState, onClose: () -> Unit) {
         if (p.list == "LM" || p.list == "LL") {
             err = "Liked Music only plays inside the YouTube Music app. Save those songs into a playlist and share that."; return
         }
-        val autoName = name.isBlank() && p.list != null && p.list != "LM"
+        val autoName = name.isBlank() && p.list != "LM"
         val label = name.trim().ifBlank { if (p.list == "LM") "Liked Music" else "Tape ${Store.tapes.value.size + 1}" }
         if (t != null) {
             val changed = t.list != p.list || (p.video != null && t.video != p.video) || t.videos != null

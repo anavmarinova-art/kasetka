@@ -205,11 +205,15 @@ object Store {
             p.edit().putBoolean("fix_resume_v3", true).apply()
         }
         // Look up first song / name / cover for playlist tapes that don't have it yet
-        scope.launch { tapes.value.filter { it.list != null && it.firstVideo == null }.forEach { ensureMeta(it, rename = false) } }
+        scope.launch {
+            tapes.value.filter { it.list != null && it.firstVideo == null }.forEach { ensureMeta(it, rename = false) }
+            tapes.value.filter { it.list == null && it.video != null && AUTO_NAME.matches(it.name) }.forEach { ensureMeta(it, rename = false) }
+        }
     }
 
     /** Fetches a playlist's title and first song from YouTube's public oEmbed endpoint and saves them on the tape. */
     suspend fun ensureMeta(t: Tape, rename: Boolean): Tape {
+        if (t.list == null && t.video != null) return nameFromSong(t, rename)
         val list = t.list ?: return t
         if (t.firstVideo != null || list == "LM" || list == "LL") return t
         val meta = withContext(Dispatchers.IO) {
@@ -273,6 +277,28 @@ object Store {
         val t = tape(activeTapeId.value) ?: return
         if (t.list == null || t.lastVideo == videoId) return
         update(t.id) { it.copy(lastVideo = videoId) }
+    }
+
+    private val AUTO_NAME = Regex("^Tape \\d+$")
+
+    /** Single-song tapes get the song's title (and its cover) instead of "Tape 4". */
+    private suspend fun nameFromSong(t: Tape, rename: Boolean): Tape {
+        val vid = t.video ?: return t
+        if (!rename && !AUTO_NAME.matches(t.name)) return t
+        val meta = withContext(Dispatchers.IO) {
+            try {
+                val u = "https://www.youtube.com/oembed?format=json&url=" +
+                    URLEncoder.encode("https://www.youtube.com/watch?v=$vid", "UTF-8")
+                val c = URL(u).openConnection() as HttpURLConnection
+                c.connectTimeout = 8000; c.readTimeout = 8000
+                if (c.responseCode != 200) null else JSONObject(c.inputStream.bufferedReader().readText())
+            } catch (e: Exception) { null }
+        } ?: return t
+        val title = meta.optString("title").trim().takeIf { it.isNotEmpty() } ?: return t
+        update(t.id) { cur ->
+            if (rename || AUTO_NAME.matches(cur.name)) cur.copy(name = title.take(40)) else cur
+        }
+        return tape(t.id) ?: t
     }
 
     fun saveResume(id: String, index: Int, time: Float) {
