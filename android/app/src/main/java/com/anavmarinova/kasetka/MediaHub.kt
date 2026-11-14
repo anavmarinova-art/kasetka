@@ -117,7 +117,6 @@ object MediaHub {
     private var loadJob: Job? = null
 
     fun loadTape(ctx: Context, t: Tape, play: Boolean) {
-        if (Ytm.active) { if (play) Ytm.start(ctx, t); return }
         webView(ctx)
         Store.markStarted(t.id)
         ids = emptyList()
@@ -150,26 +149,16 @@ object MediaHub {
         }
     }
 
-    fun play() { if (Ytm.active) return Ytm.play(); appContext?.let { startService(it) }; js("play()") }
-    fun pause() { if (Ytm.active) return Ytm.pause(); savePosition(); js("pause()") }
+    fun play() { appContext?.let { startService(it) }; js("play()") }
+    fun pause() { savePosition(); js("pause()") }
     fun toggle() { if (state.value.playing) pause() else play() }
-    fun next() { if (Ytm.active) return Ytm.next(); js("next()") }
-    fun prev() { if (Ytm.active) return Ytm.prev(); js("prev()") }
-    fun seekBy(ms: Long) { if (Ytm.active) return Ytm.seekTo(positionNow() + ms); js("seekBy(${ms / 1000.0})") }
-    fun seekTo(ms: Long) { if (Ytm.active) return Ytm.seekTo(ms); js("seek(${ms / 1000.0})") }
-    fun skipTo(queueId: Long) { if (Ytm.active) return Ytm.skipTo(queueId); js("at($queueId)") }
-
-    /** Called when the Premium switch changes: stop the other player and hook up the chosen one. */
-    fun switchEngine(ctx: Context) {
-        js("stop()")
-        try { ctx.stopService(Intent(ctx, PlayerService::class.java)) } catch (e: Exception) { }
-        state.value = Deck()
-        if (Ytm.active) Ytm.connect(ctx)
-        refreshWidget()
-    }
+    fun next() { js("next()") }
+    fun prev() { js("prev()") }
+    fun seekBy(ms: Long) { js("seekBy(${ms / 1000.0})") }
+    fun seekTo(ms: Long) { js("seek(${ms / 1000.0})") }
+    fun skipTo(queueId: Long) { js("at($queueId)") }
 
     fun eject() {
-        if (Ytm.active) { Ytm.pause(); state.value = state.value.copy(tapeId = null); refreshWidget(); return }
         savePosition()
         js("stop()")
         state.value = state.value.copy(tapeId = null, playing = false)
@@ -211,7 +200,6 @@ object MediaHub {
         }
         @JavascriptInterface fun onEnded() {
             main.post {
-                if (Ytm.active) return@post
                 val id = state.value.tapeId ?: return@post
                 Sfx.play(Sfx.Kind.CLUNK)
                 Store.saveResume(id, 0, 0f)          // rewound, ready for next time
@@ -230,7 +218,6 @@ object MediaHub {
     }
 
     private fun applyState(json: String) {
-        if (Ytm.active) return
         val o = try { JSONObject(json) } catch (e: Exception) { return }
         val prev = state.value
         var vid = o.optString("videoId").ifEmpty { null }
@@ -263,7 +250,6 @@ object MediaHub {
     }
 
     private fun applyQueue(json: String) {
-        if (Ytm.active) return
         ids = try { JSONArray(json).let { a -> (0 until a.length()).map { a.getString(it) } } } catch (e: Exception) { emptyList() }
         state.value = state.value.copy(queue = buildQueue())
         Titles.fetchMissing(ids) { state.value = state.value.copy(queue = buildQueue()) }
