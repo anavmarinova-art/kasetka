@@ -84,7 +84,7 @@ object MediaHub {
     fun webView(ctx: Context): WebView {
         appContext = ctx.applicationContext
         web?.let { return it }
-        val w = WebView(MutableContextWrapper(ctx.applicationContext))
+        val w = AlwaysVisibleWebView(MutableContextWrapper(ctx.applicationContext))
         w.settings.javaScriptEnabled = true
         w.settings.domStorageEnabled = true
         w.settings.mediaPlaybackRequiresUserGesture = false
@@ -296,5 +296,13 @@ object Titles {
                 workers--
             }
         }
+    }
+}
+
+/** Android pauses video in a WebView it thinks nobody can see. This one always says it's visible,
+ *  so the tape keeps playing when Kasetka is minimised or the screen is off. */
+class AlwaysVisibleWebView(ctx: Context) : WebView(ctx) {
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(android.view.View.VISIBLE)
     }
 }

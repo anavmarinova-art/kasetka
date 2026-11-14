@@ -32,6 +32,7 @@ function create(t) {
   jumpTo = t.index || 0; seekAfter = t.time || 0;
   if (listOk) {
     vars.listType = 'playlist'; vars.list = t.list;
+    if (t.index) { vars.index = t.index; jumpTo = 0; }
   } else if (t.videos && t.videos.length) {
     opts.videoId = t.videos[0];
     if (t.videos.length > 1) vars.playlist = t.videos.slice(1).join(',');
@@ -62,6 +63,22 @@ function create(t) {
     onError(e) {
       let v = ''; try { v = (p.getVideoData() || {}).video_id || ''; } catch (_) {}
       console.log('error ' + e.data + ' on video ' + v);
+      let have = 0; try { have = (p.getPlaylist() || []).length; } catch (_) {}
+      if (listOk && have === 0 && [100, 101, 150, 152, 153].includes(e.data) && (t.skipStart || 0) < 15) {
+        // Whole playlist refused because a song at the start is blocked: try starting one song later
+        const next = Object.assign({}, t, { index: (t.index || 0) + 1, time: 0, skipStart: (t.skipStart || 0) + 1,
+                                            play: t.play || wantPlay || ready });
+        console.log('blocked at start, trying from song ' + (next.index + 1));
+        setTimeout(() => create(next), 300);
+        return;
+      }
+      if (!listOk && t.videos && t.videos.length > 1 && have === 0 && [100, 101, 150, 152, 153].includes(e.data)) {
+        // First song of a song list is blocked: drop it and start with the next one
+        console.log('first song blocked, skipping it');
+        const next = Object.assign({}, t, { videos: t.videos.slice(1), index: 0, time: 0, play: t.play || wantPlay || ready });
+        setTimeout(() => create(next), 300);
+        return;
+      }
       A.onError(e.data);
       if ([100, 101, 150, 152, 153].includes(e.data) && (t.list || (t.videos && t.videos.length > 1))) {
         blockedRun++;

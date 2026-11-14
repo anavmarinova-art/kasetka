@@ -20,6 +20,27 @@ object Playlists {
 
     suspend fun songs(listId: String): List<Song> {
         cache[listId]?.let { return it }
+        // 1st try: the same data request YouTube's website makes
+        val api = withContext(Dispatchers.IO) {
+            try {
+                val c = URL("https://www.youtube.com/youtubei/v1/browse?prettyPrint=false").openConnection() as HttpURLConnection
+                c.connectTimeout = 10000; c.readTimeout = 15000
+                c.requestMethod = "POST"; c.doOutput = true
+                c.setRequestProperty("Content-Type", "application/json")
+                c.setRequestProperty("Accept-Language", "en-US,en;q=0.9")
+                val body = JSONObject().put("browseId", "VL$listId").put("context", JSONObject().put("client",
+                    JSONObject().put("clientName", "WEB").put("clientVersion", "2.20241101.00.00").put("hl", "en").put("gl", "US")))
+                c.outputStream.use { it.write(body.toString().toByteArray()) }
+                if (c.responseCode == 200) JSONObject(c.inputStream.bufferedReader().readText())
+                else { MediaHub.log("playlist data answered ${c.responseCode}"); null }
+            } catch (e: Exception) { MediaHub.log("playlist data failed: ${e.message}"); null }
+        }
+        if (api != null) {
+            val out = LinkedHashMap<String, Song>()
+            walk(api, out)
+            if (out.isNotEmpty()) return remember(listId, out.values.toList())
+        }
+        // 2nd try: the playlist web page
         val html = withContext(Dispatchers.IO) {
             try {
                 val c = URL("https://www.youtube.com/playlist?list=$listId&hl=en").openConnection() as HttpURLConnection
@@ -36,6 +57,11 @@ object Playlists {
             } catch (e: Exception) { MediaHub.log("playlist page failed: ${e.message}"); null }
         } ?: return emptyList()
         val songs = parse(html)
+        if (songs.isEmpty()) MediaHub.log("playlist page had no songs (${html.length} chars${if (html.contains("consent")) ", consent page" else ""})")
+        return remember(listId, songs)
+    }
+
+    private fun remember(listId: String, songs: List<Song>): List<Song> {
         if (songs.isNotEmpty()) {
             cache[listId] = songs
             songs.forEach { Titles.put(it.id, it.title, it.artist) }
@@ -102,7 +128,7 @@ object Playlists {
     private fun walk(node: Any?, out: LinkedHashMap<String, Song>) {
         when (node) {
             is JSONObject -> {
-                node.optJSONObject("playlistVideoRenderer")?.let { r ->
+                (node.optJSONObject("playlistVideoRenderer") ?: node.optJSONObject("playlistPanelVideoRenderer"))?.let { r ->
                     val id = r.optString("videoId")
                     if (id.length == 11 && id !in out) out[id] = Song(id, text(r, "title"), text(r, "shortBylineText"))
                     return
