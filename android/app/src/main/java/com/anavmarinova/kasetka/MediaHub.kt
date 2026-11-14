@@ -112,24 +112,36 @@ object MediaHub {
     }
 
     // ── commands ──
+    private var loadJob: Job? = null
+
     fun loadTape(ctx: Context, t: Tape, play: Boolean) {
         webView(ctx)
         Store.markStarted(t.id)
-        val o = JSONObject().apply {
-            put("play", play)
-            put("index", t.resumeIndex)
-            put("time", t.resumeTime.toDouble())
-            if (t.list != null) put("list", t.list)
-            if (!t.videos.isNullOrEmpty()) put("videos", JSONArray(t.videos))
-            if (t.video != null) put("video", t.video)
-        }
         ids = emptyList()
         staleVid = state.value.mediaId
         state.value = state.value.copy(tapeId = t.id, title = "", artist = "", art = null, mediaId = null,
             playing = false, position = 0, duration = 0, queue = emptyList(), activeQueueId = -1)
         artFor = null
-        js("load($o)")
         if (play) startService(ctx)
+        loadJob?.cancel()
+        loadJob = Store.scope.launch {
+            // Playlists: read the songs ourselves and give the player the song list (it refuses whole playlists in apps)
+            val songs = if (t.list != null && !t.list.startsWith("RD")) Playlists.songs(t.list).map { it.id }.take(150) else emptyList()
+            val o = JSONObject().apply {
+                put("play", play)
+                put("index", if (songs.isNotEmpty() && t.resumeIndex >= songs.size) 0 else t.resumeIndex)
+                put("time", t.resumeTime.toDouble())
+                when {
+                    songs.isNotEmpty() -> put("videos", JSONArray(songs))
+                    t.list != null -> { put("list", t.list); t.video?.let { put("video", it) } }
+                    !t.videos.isNullOrEmpty() -> put("videos", JSONArray(t.videos))
+                    else -> put("video", t.video)
+                }
+            }
+            if (t.list != null && songs.isEmpty())
+                state.value = state.value.copy(error = "Couldn't read this playlist's songs. Make sure it's Public or Unlisted.")
+            if (state.value.tapeId == t.id) js("load($o)")
+        }
     }
 
     fun play() { appContext?.let { startService(it) }; js("play()") }
