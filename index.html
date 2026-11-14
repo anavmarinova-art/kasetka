@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-whimsy="off" data-skin="classic">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#121318">
+<title>Kasetka — fold-to-play tape deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&family=Nunito:wght@400;700;800&family=Permanent+Marker&family=VT323&display=swap" rel="stylesheet">
+<style>
+/* ---------- THEMES ---------- */
+html[data-theme=dark]{--bg:#121318;--panel:#1c1e26;--panel2:#262935;--text:#eceef4;--muted:#9097a8;--accent:#ff7a3d;--deck:linear-gradient(180deg,#3a3d47,#24262e);--door:#0c0d11;--key-top:#5a5e6b;--key:#3f424c;--key-edge:#1d1f25;--key-ink:#e8e9ee;--lcd-bg:#0f1a12;--lcd-fg:#7dff9a;--ridge1:#25272d;--ridge2:#4a4d57;--case-bg:rgba(255,255,255,.07);--line:rgba(255,255,255,.1)}
+html[data-theme=light]{--bg:#ece8e1;--panel:#f8f6f2;--panel2:#fff;--text:#22242b;--muted:#6b7080;--accent:#e2543a;--deck:linear-gradient(180deg,#dedbd4,#bdb9b0);--door:#2a2a2e;--key-top:#fbfaf7;--key:#e3e0d9;--key-edge:#a7a399;--key-ink:#2b2d33;--lcd-bg:#c8d4b4;--lcd-fg:#26331c;--ridge1:#8f8b82;--ridge2:#d3cfc6;--case-bg:rgba(0,0,0,.06);--line:rgba(0,0,0,.1)}
+html[data-theme=light][data-whimsy=on]{--bg:radial-gradient(circle at 15% 10%,#ffd1ec,transparent 45%),radial-gradient(circle at 85% 85%,#c9f1ff,transparent 45%),linear-gradient(135deg,#fff0f8,#f1e9ff);--panel:rgba(255,255,255,.7);--panel2:#fff;--text:#3a2350;--muted:#8a6fa3;--accent:#ff4fa3;--deck:linear-gradient(180deg,#fff2fa,#e6d9ff);--door:#3b2558;--key-top:#ffffff;--key:#ffd6ec;--key-edge:#d79abf;--key-ink:#5a2d72;--lcd-bg:#2b1840;--lcd-fg:#ff9be0;--ridge1:#e7a9cf;--ridge2:#fff0f8;--case-bg:rgba(255,79,163,.1);--line:rgba(120,60,160,.15)}
+html[data-theme=dark][data-whimsy=on]{--bg:radial-gradient(circle at 20% 10%,#3b1d5e,transparent 50%),radial-gradient(circle at 80% 90%,#0f3b55,transparent 50%),#120b22;--panel:rgba(40,24,70,.72);--panel2:#2c1b4d;--text:#fbeaff;--muted:#b9a2d6;--accent:#ff5fd2;--deck:linear-gradient(180deg,#3a2463,#22153d);--door:#0a0614;--key-top:#6b4aa6;--key:#4b3080;--key-edge:#24163f;--key-ink:#ffe9fb;--lcd-bg:#08121f;--lcd-fg:#6ff7ff;--ridge1:#2a1748;--ridge2:#7a55c0;--case-bg:rgba(255,95,210,.1);--line:rgba(255,200,255,.14)}
+/* cassette skins */
+html[data-skin=classic]{--c-body:#2f5d8a;--c-body2:#24486b;--c-label:#f3ead2;--c-s2:#f2a33a;--c-ink:#1d2b44;--c-win:rgba(12,15,24,.85);--c-hub:#f4f4f4}
+html[data-skin=sport]{--c-body:#f2c230;--c-body2:#c99a12;--c-label:#1b1b1b;--c-s2:#ffffff;--c-ink:#f2c230;--c-win:rgba(10,10,10,.85);--c-hub:#ffffff}
+html[data-skin=cyber]{--c-body:#17172e;--c-body2:#0b0b19;--c-label:#24244a;--c-s2:#19f0ff;--c-ink:#19f0ff;--c-win:rgba(0,0,0,.85);--c-hub:#19f0ff}
+html[data-skin=clear]{--c-body:rgba(205,222,240,.62);--c-body2:rgba(150,168,190,.75);--c-label:#fffdf6;--c-s2:#9a9a9a;--c-ink:#222;--c-win:rgba(30,35,45,.55);--c-hub:#fff}
+html[data-whimsy=on]{--c-s2:#8af3ff}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{font-family:Nunito,system-ui,sans-serif;background:var(--bg);background-attachment:fixed;color:var(--text);overflow:hidden;user-select:none;-webkit-user-select:none}
+html[data-whimsy=on] body{font-family:Fredoka,Nunito,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+input,textarea{font:inherit;user-select:text;-webkit-user-select:text}
+#app{height:100dvh;display:flex;flex-direction:column;padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+
+/* ---------- TOP BAR ---------- */
+.topbar{display:flex;align-items:center;gap:8px;padding:10px 14px;padding-top:max(10px,env(safe-area-inset-top))}
+.logo{font-family:'Permanent Marker',cursive;font-size:24px;letter-spacing:.5px;flex:1;display:flex;align-items:center;gap:8px}
+.logo .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)}
+.ibtn{border:none;background:var(--panel);border:1px solid var(--line);border-radius:12px;height:40px;min-width:40px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-weight:700;font-size:14px}
+.ibtn.primary{background:var(--accent);color:#fff;border-color:transparent}
+html[data-whimsy=on] .ibtn{border-radius:20px}
+
+/* ---------- MAIN (unfolded) ---------- */
+main{flex:1;min-height:0;display:grid;grid-template-columns:1fr minmax(340px,1.05fr);gap:14px;padding:0 14px 14px;padding-bottom:max(14px,env(safe-area-inset-bottom))}
+@media (max-width:760px){main{grid-template-columns:1fr;grid-template-rows:auto 1fr}#deck{order:-1}}
+.shelf{display:flex;flex-direction:column;min-height:0;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:12px;backdrop-filter:blur(8px)}
+.shelf-head{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.tabs{display:flex;background:var(--panel2);border-radius:10px;padding:3px;border:1px solid var(--line)}
+.tabs button{border:none;background:none;padding:6px 12px;border-radius:8px;font-weight:700;font-size:13px;color:var(--muted)}
+.tabs button.on{background:var(--accent);color:#fff}
+.search{flex:1;min-width:90px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:0 10px}
+.grid{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:14px;align-content:start;padding:4px 2px 10px}
+.empty{grid-column:1/-1;text-align:center;color:var(--muted);padding:26px 10px;line-height:1.5}
+.empty b{color:var(--text)}
+
+/* tape case */
+.case{position:relative;aspect-ratio:4/3;border-radius:9px;background:var(--case-bg);padding:6px;box-shadow:0 4px 10px rgba(0,0,0,.25);touch-action:pan-y;cursor:grab;transition:transform .15s}
+.case:active{transform:scale(.97)}
+.case.current{outline:2px solid var(--accent);outline-offset:2px}
+.jcard{width:100%;height:100%;border-radius:5px;background-color:var(--tc);background-size:cover;background-position:center;position:relative;overflow:hidden}
+.jcard .bands{position:absolute;left:0;right:0;top:18%;height:22%;background:linear-gradient(var(--tc2) 0 45%,transparent 45% 55%,rgba(255,255,255,.75) 55%)}
+.jcard .jname{position:absolute;left:0;right:0;bottom:0;padding:5px 7px;font-family:'Permanent Marker',cursive;font-size:14px;line-height:1.1;color:#1d1d1d;background:rgba(255,253,244,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.case::after{content:"";position:absolute;inset:0;border-radius:9px;background:linear-gradient(130deg,rgba(255,255,255,.35),transparent 35%,transparent 70%,rgba(255,255,255,.12));pointer-events:none}
+.case .meta{position:absolute;top:10px;right:10px;font-size:10px;font-weight:800;background:rgba(0,0,0,.55);color:#fff;border-radius:6px;padding:1px 5px}
+.case .edit-badge{display:none;position:absolute;top:-6px;left:-6px;width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;align-items:center;justify-content:center;font-size:13px;z-index:2}
+.editing .case .edit-badge{display:flex}
+.editing .case{animation:wob .35s ease-in-out infinite alternate}
+@keyframes wob{from{transform:rotate(-1.2deg)}to{transform:rotate(1.2deg)}}
+.ghost{position:fixed;z-index:1000;pointer-events:none;transform:rotate(-7deg) scale(1.06);opacity:.95;box-shadow:0 18px 30px rgba(0,0,0,.45)}
+
+/* ---------- DECK ---------- */
+#deck{display:flex;flex-direction:column;justify-content:center;min-height:0}
+.deck-body{background:var(--deck);border-radius:22px;padding:16px;box-shadow:0 14px 30px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.25);display:flex;flex-direction:column;gap:14px;position:relative}
+html[data-whimsy=on] .deck-body{border-radius:32px}
+.deck-top{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:800;letter-spacing:2px;color:var(--key-ink);opacity:.7}
+.led{width:9px;height:9px;border-radius:50%;background:#511;display:inline-block;margin-right:6px;vertical-align:middle}
+html.playing .led{background:#ff3b30;box-shadow:0 0 8px #ff3b30}
+.door{position:relative;aspect-ratio:300/190;border-radius:14px;background:var(--door);overflow:hidden;box-shadow:inset 0 5px 16px rgba(0,0,0,.6);transition:box-shadow .2s}
+.door .glass{position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.2),transparent 38%,transparent 62%,rgba(255,255,255,.07));pointer-events:none;z-index:2}
+.door .slot{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.door .slot svg{width:90%;display:block}
+.door .hint{position:absolute;inset:14px;border:2px dashed rgba(255,255,255,.22);border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center;color:rgba(255,255,255,.55);font-weight:700;font-size:14px;padding:10px}
+.door.hot{box-shadow:inset 0 0 0 3px var(--accent),0 0 24px var(--accent)}
+.inserting{animation:ins .45s cubic-bezier(.2,.9,.3,1.2)}
+@keyframes ins{from{transform:translateY(-70%) scale(.85);opacity:0}to{transform:none;opacity:1}}
+.ejecting{animation:ej .35s ease-in forwards}
+@keyframes ej{to{transform:translateY(-80%) rotate(-4deg);opacity:0}}
+
+.lcd{background:var(--lcd-bg);color:var(--lcd-fg);font-family:VT323,monospace;font-size:22px;border-radius:8px;padding:5px 10px;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;box-shadow:inset 0 2px 7px rgba(0,0,0,.6);text-shadow:0 0 6px currentColor;min-height:38px}
+.marquee{overflow:hidden;white-space:nowrap}
+.marquee span{display:inline-block}
+.marquee.scroll span{padding-left:100%;animation:mq 16s linear infinite}
+@keyframes mq{to{transform:translateX(-100%)}}
+.lower{display:flex;gap:14px;align-items:stretch}
+.keys{flex:1;display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.key{border:none;border-radius:10px;height:66px;background:linear-gradient(var(--key-top),var(--key));box-shadow:0 6px 0 var(--key-edge),0 9px 14px rgba(0,0,0,.35);color:var(--key-ink);font-weight:800;font-size:10px;letter-spacing:1px;transition:transform .06s,box-shadow .06s;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;touch-action:none}
+.key .ic{font-size:20px;line-height:1}
+.key:active,.key.down{transform:translateY(5px);box-shadow:0 1px 0 var(--key-edge),0 2px 4px rgba(0,0,0,.3)}
+.key.play{color:var(--accent)}
+html[data-whimsy=on] .key{border-radius:18px}
+.wheel-wrap{display:flex;flex-direction:column;align-items:center;gap:4px}
+.wheel{width:50px;flex:1;min-height:72px;border-radius:12px;background:repeating-linear-gradient(0deg,var(--ridge1) 0 3px,var(--ridge2) 3px 7px);background-position-y:var(--off,0px);box-shadow:inset 0 12px 14px rgba(0,0,0,.5),inset 0 -12px 14px rgba(0,0,0,.5),0 2px 0 rgba(255,255,255,.2);touch-action:none;cursor:ns-resize}
+.vol{font-family:VT323,monospace;font-size:16px;color:var(--key-ink);opacity:.8}
+.grille{height:26px;border-radius:8px;background:radial-gradient(circle,rgba(0,0,0,.45) 1.4px,transparent 1.8px) 0 0/8px 8px;opacity:.7}
+
+/* ---------- COVER (folded) VIEW ---------- */
+#coverView{display:none;flex:1;min-height:0;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;padding-top:max(16px,env(safe-area-inset-top));padding-bottom:max(16px,env(safe-area-inset-bottom))}
+html.cover .topbar,html.cover main{display:none}
+html.cover #coverView{display:flex}
+.big{position:relative;width:min(94vw,calc((100dvh - 290px)*1.58));max-width:720px}
+.big svg{width:100%;display:block;filter:drop-shadow(0 16px 26px rgba(0,0,0,.45))}
+.big .zones{position:absolute;inset:0;display:grid;grid-template-columns:1fr 1.2fr 1fr}
+.big .zones div{border-radius:12px}
+.big .zones div:active{background:rgba(255,255,255,.08)}
+.big .nocass{aspect-ratio:300/190;border:3px dashed var(--line);border-radius:16px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:700;text-align:center;padding:20px}
+.info{width:min(94vw,560px);text-align:center}
+.info .t{font-size:20px;font-weight:800}
+.info .a{color:var(--muted);font-size:14px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.info .marquee{font-size:20px;font-weight:800}
+.tapebar{height:6px;border-radius:3px;background:var(--line);margin:10px 0 4px;overflow:hidden}
+.tapebar i{display:block;height:100%;width:0;background:var(--accent);border-radius:3px}
+.tiny{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;font-weight:700;font-family:VT323,monospace;font-size:17px}
+.cctl{display:flex;gap:16px;align-items:center;justify-content:center}
+.cctl .key{width:66px;height:58px}
+.cctl .key.play{width:84px;height:70px}
+.cctl .key .ic{font-size:24px}
+.cbar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+@media (orientation:landscape){
+  html.cover #coverView{flex-direction:row;gap:22px}
+  .big{width:min(58vw,calc((100dvh - 40px)*1.58))}
+  .side{display:flex;flex-direction:column;gap:14px;align-items:center;min-width:0;flex:1;max-width:420px}
+}
+.side{display:flex;flex-direction:column;gap:14px;align-items:center;width:100%}
+
+/* cassette svg parts */
+.cassette .reel{transform-box:fill-box;transform-origin:center;animation:spin 2.4s linear infinite;animation-play-state:paused}
+html.playing .cassette .reel{animation-play-state:running}
+html.ff .cassette .reel{animation-play-state:running;animation-duration:.35s}
+html.rew .cassette .reel{animation-play-state:running;animation-duration:.35s;animation-direction:reverse}
+@keyframes spin{to{transform:rotate(360deg)}}
+html[data-skin=cyber] .cassette{filter:drop-shadow(0 0 8px rgba(255,43,214,.45))}
+
+/* ---------- MODALS / SHEETS ---------- */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:500;padding:14px}
+.modal-bg.open{display:flex}
+.modal{background:var(--panel2);color:var(--text);border-radius:18px;width:min(460px,100%);max-height:88dvh;overflow:auto;padding:18px;box-shadow:0 20px 50px rgba(0,0,0,.5);border:1px solid var(--line)}
+.modal h3{margin:0 0 12px;font-size:19px}
+.modal label{display:block;font-size:13px;font-weight:800;color:var(--muted);margin:12px 0 5px}
+.modal input[type=text],.modal textarea{width:100%;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);padding:10px 12px}
+.modal textarea{min-height:80px;font-size:12px;font-family:monospace}
+.modal .help{font-size:13px;color:var(--muted);line-height:1.45;margin-top:10px}
+.modal .row{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+.err{color:#ff5a5a;font-size:13px;font-weight:700;margin-top:8px;min-height:1em}
+.sheet-bg{align-items:flex-end;padding:0}
+.sheet{width:100%;max-width:900px;border-radius:20px 20px 0 0;height:78dvh;display:flex;flex-direction:column;padding-bottom:max(18px,env(safe-area-inset-bottom))}
+.sheet .grid{flex:1}
+.set{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);gap:10px}
+.set span small{display:block;color:var(--muted);font-size:12px;font-weight:400}
+.sw{position:relative;width:46px;height:28px;flex:none}
+.sw input{opacity:0;width:0;height:0}
+.sw i{position:absolute;inset:0;border-radius:14px;background:var(--line);transition:.2s}
+.sw i::after{content:"";position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.sw input:checked+i{background:var(--accent)}
+.sw input:checked+i::after{transform:translateX(18px)}
+.seg{display:flex;gap:6px}
+.seg button{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:7px 12px;font-weight:700;font-size:13px}
+.seg button.on{background:var(--accent);color:#fff;border-color:transparent}
+.swatch{width:34px;height:34px;border-radius:9px;border:2px solid transparent}
+.swatch.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--panel2) inset}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);background:#111;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;font-weight:700;opacity:0;transition:.25s;z-index:900;max-width:90vw;text-align:center;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%)}
+.banner{background:#7a2a12;color:#fff;font-size:13px;padding:8px 14px;text-align:center;display:none}
+.banner.show{display:block}
+
+#ytwrap{position:fixed;right:12px;bottom:12px;width:220px;height:220px;border-radius:14px;overflow:hidden;opacity:0;pointer-events:none;z-index:-1}
+#ytwrap.show{opacity:1;pointer-events:auto;z-index:60;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+#ytwrap iframe{width:100%;height:100%;border:0}
+#stars{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:2000}
+</style>
+</head>
+<body>
+<canvas id="stars"></canvas>
+<div id="app">
+  <div class="banner" id="banner"></div>
+  <div class="topbar">
+    <div class="logo"><span class="dot"></span>Kasetka</div>
+    <button class="ibtn" id="btnFold" title="Preview the folded cover-screen view">⤓ Cover view</button>
+    <button class="ibtn" id="btnSettings" title="Settings">⚙</button>
+    <button class="ibtn primary" id="btnAdd">＋ Tape</button>
+  </div>
+  <main>
+    <section class="shelf" id="shelf">
+      <div class="shelf-head">
+        <div class="tabs" data-tabs><button data-tab="all" class="on">All</button><button data-tab="recent">Recent</button></div>
+        <input class="search" placeholder="Search tapes" data-search>
+        <button class="ibtn" data-edit>Edit</button>
+      </div>
+      <div class="grid" data-grid></div>
+    </section>
+    <section id="deck">
+      <div class="deck-body">
+        <div class="deck-top"><span><span class="led"></span>STEREO CASSETTE DECK</span><span id="deckSide">SIDE A</span></div>
+        <div class="door" id="door"><div class="slot" id="slot"></div><div class="glass"></div></div>
+        <div class="lcd"><span id="lcdTrk">--/--</span><div class="marquee" id="lcdTitle"><span>NO TAPE</span></div><span id="lcdTime">00:00</span></div>
+        <div class="lower">
+          <div class="keys">
+            <button class="key" data-k="rew"><span class="ic">⏪</span>REW</button>
+            <button class="key play" data-k="play"><span class="ic">▶</span>PLAY</button>
+            <button class="key" data-k="stop"><span class="ic">■</span>STOP</button>
+            <button class="key" data-k="ff"><span class="ic">⏩</span>FF</button>
+            <button class="key" data-k="eject"><span class="ic">⏏</span>EJECT</button>
+          </div>
+          <div class="wheel-wrap"><div class="wheel" id="wheel"></div><div class="vol" id="volLbl">VOL 12</div></div>
+        </div>
+        <div class="grille"></div>
+      </div>
+    </section>
+  </main>
+
+  <section id="coverView">
+    <div class="big" id="big"></div>
+    <div class="side">
+      <div class="info">
+        <div class="marquee" id="cTitle"><span>No tape</span></div>
+        <div class="a" id="cSub">Unfold to pick a tape, or tap Tapes</div>
+        <div class="tapebar"><i id="cBar"></i></div>
+        <div class="tiny"><span id="cTrk">--/--</span><span id="cTime">00:00</span></div>
+      </div>
+      <div class="cctl">
+        <button class="key" data-k="rew"><span class="ic">⏪</span></button>
+        <button class="key play" data-k="playpause"><span class="ic" id="cPlayIc">▶</span></button>
+        <button class="key" data-k="ff"><span class="ic">⏩</span></button>
+      </div>
+      <div class="cbar">
+        <button class="ibtn" id="cTapes">📼 Tapes</button>
+        <button class="ibtn" id="cFull">⛶</button>
+        <button class="ibtn" id="cSettings">⚙</button>
+        <button class="ibtn" id="cExit" style="display:none">⤒ Unfolded view</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- tapes sheet (cover view) -->
+<div class="modal-bg sheet-bg" id="sheetBg">
+  <div class="modal sheet" id="sheetPanel">
+    <div class="shelf-head">
+      <div class="tabs" data-tabs><button data-tab="all" class="on">All</button><button data-tab="recent">Recent</button></div>
+      <input class="search" placeholder="Search tapes" data-search>
+      <button class="ibtn" id="sheetAdd">＋</button>
+      <button class="ibtn" id="sheetClose">✕</button>
+    </div>
+    <div class="grid" data-grid></div>
+  </div>
+</div>
+
+<!-- add / edit tape -->
+<div class="modal-bg" id="addBg">
+  <div class="modal">
+    <h3 id="addTitle">New tape</h3>
+    <label>YouTube Music or YouTube link</label>
+    <input type="text" id="inLink" placeholder="https://music.youtube.com/playlist?list=…">
+    <label>Label (what's written on the tape)</label>
+    <input type="text" id="inName" placeholder="Sunday cleaning mix" maxlength="40">
+    <div class="err" id="addErr"></div>
+    <div class="help">In YouTube Music, open a playlist or album → <b>⋮</b> or <b>Share</b> → <b>Copy link</b>, then paste it here. Public or Unlisted playlists work best. <b>Liked Music</b> can't be played outside the YouTube Music app, so save those songs into a playlist first.</div>
+    <div class="row">
+      <button class="ibtn" id="addDelete" style="display:none;color:#ff5a5a">Remove tape</button>
+      <span style="flex:1"></span>
+      <button class="ibtn" id="addCancel">Cancel</button>
+      <button class="ibtn primary" id="addSave">Save tape</button>
+    </div>
+  </div>
+</div>
+
+<!-- settings -->
+<div class="modal-bg" id="setBg">
+  <div class="modal">
+    <h3>Settings</h3>
+    <div class="set"><span>Theme</span><div class="seg" id="segTheme"><button data-v="light">Light</button><button data-v="dark">Dark</button></div></div>
+    <div class="set"><span>Whimsy<small>Pastel sparkle mode on top of light or dark</small></span><label class="sw"><input type="checkbox" data-s="whimsy"><i></i></label></div>
+    <div class="set"><span>Cassette skin</span><div class="seg" id="segSkin"></div></div>
+    <div class="set"><span>Fold to play<small>Closing the phone starts the tape</small></span><label class="sw"><input type="checkbox" data-s="foldToPlay"><i></i></label></div>
+    <div class="set"><span>Pause when unfolding</span><label class="sw"><input type="checkbox" data-s="pauseOnUnfold"><i></i></label></div>
+    <div class="set"><span>Tape hiss</span><label class="sw"><input type="checkbox" data-s="hiss"><i></i></label></div>
+    <div class="set"><span>Key clicks</span><label class="sw"><input type="checkbox" data-s="clicks"><i></i></label></div>
+    <div class="set"><span>Haptics</span><label class="sw"><input type="checkbox" data-s="haptics"><i></i></label></div>
+    <div class="set"><span>Stars on touch</span><label class="sw"><input type="checkbox" data-s="stars"><i></i></label></div>
+    <div class="set"><span>Show video window</span><label class="sw"><input type="checkbox" data-s="showVideo"><i></i></label></div>
+    <label>Backup your tape shelf</label>
+    <textarea id="backupTxt" placeholder="Paste a backup here to restore it"></textarea>
+    <div class="row" style="justify-content:flex-start">
+      <button class="ibtn" id="bkCopy">Copy backup</button>
+      <button class="ibtn" id="bkRestore">Restore from box</button>
+      <span style="flex:1"></span>
+      <button class="ibtn primary" id="setClose">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="ytwrap"><div id="yt"></div></div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const html = document.documentElement;
+const KEY = 'kasetka.v1';
+const PALETTE = ['#e2543a','#3a8fe2','#2fbf71','#f2a33a','#b05ce0','#ff5fa2','#19b8c9','#e2c23a'];
+const SKINS = {classic:'#2f5d8a', sport:'#f2c230', cyber:'#17172e', clear:'#cddff0'};
+
+/* ---------- state ---------- */
+const defaults = {theme: matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark', whimsy:false, skin:'classic',
+  hiss:true, clicks:true, haptics:true, stars:true, foldToPlay:true, pauseOnUnfold:false, showVideo:false, volume:12};
+let db = {tapes:[], settings:{...defaults}, currentId:null};
+try { const raw = localStorage.getItem(KEY); if (raw) { const d = JSON.parse(raw); db = {...db, ...d, settings:{...defaults, ...(d.settings||{})}}; } } catch(e) {}
+const S = db.settings;
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(db)); } catch(e) {} }
+
+let current = db.tapes.find(t => t.id === db.currentId) || null;
+let player = null, playerReady = false, pendingCue = null;
+let playing = false, isCover = false, forceCover = false, inited = false;
+let shelfTab = 'all', query = '', editing = false;
+
+/* ---------- helpers ---------- */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = s => { s = Math.max(0, Math.floor(s||0)); return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0'); };
+let toastT;
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove('show'), 2600); }
+function buzz(p){ if (S.haptics && navigator.vibrate) try { navigator.vibrate(p); } catch(e) {} }
+
+/* ---------- sound (synthesised) ---------- */
+let ac = null, hissGain = null, noiseBuf = null;
+function ensureAudio(){
+  if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+  try {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+    const d = noiseBuf.getChannelData(0); for (let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
+    const src = ac.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2500;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 9000;
+    hissGain = ac.createGain(); hissGain.gain.value = 0;
+    src.connect(hp).connect(lp).connect(hissGain).connect(ac.destination); src.start();
+  } catch(e) { ac = null; }
+}
+function sfx(kind){
+  if (!S.clicks || !ac) return;
+  const t = ac.currentTime;
+  const conf = {click:[2600,.35,.035], tick:[3800,.16,.015], clunk:[500,.6,.12]}[kind] || [2600,.3,.04];
+  const src = ac.createBufferSource(); src.buffer = noiseBuf;
+  const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = conf[0]; bp.Q.value = 1.2;
+  const g = ac.createGain(); g.gain.setValueAtTime(conf[1], t); g.gain.exponentialRampToValueAtTime(0.001, t + conf[2]);
+  src.connect(bp).connect(g).connect(ac.destination); src.start(t, Math.random()); src.stop(t + conf[2] + .02);
+  if (kind === 'clunk') {
+    const o = ac.createOscillator(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(55, t+.12);
+    const og = ac.createGain(); og.gain.setValueAtTime(.35, t); og.gain.exponentialRampToValueAtTime(.001, t+.15);
+    o.connect(og).connect(ac.destination); o.start(t); o.stop(t+.16);
+  }
+}
+function updateHiss(){ if (hissGain) hissGain.gain.setTargetAtTime(playing && S.hiss ? 0.022 : 0, ac.currentTime, 0.25); }
+
+/* ---------- stars on touch ---------- */
+const cv = $('#stars'), cx = cv.getContext('2d');
+let parts = [], starRAF = null, lastStar = {x:0,y:0}, pointerDown = false;
+function sizeCanvas(){ const r = devicePixelRatio || 1; cv.width = innerWidth*r; cv.height = innerHeight*r; cx.setTransform(r,0,0,r,0,0); }
+sizeCanvas();
+function starColors(){ return S.whimsy ? ['#ff8ad8','#8af3ff','#b7a6ff','#fff07a','#9effa8'] : (S.theme==='light' ? ['#f5b301','#ff8a3d','#ffd54a'] : ['#ffd54a','#fff3b0','#ffb347']); }
+function spawn(x, y, n, spread){
+  if (!S.stars) return;
+  const cols = starColors();
+  for (let i=0;i<n;i++){
+    const a = Math.random()*Math.PI*2, sp = (Math.random()*spread)+.4;
+    parts.push({x, y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp - .6, life:1, size:4+Math.random()*7, rot:Math.random()*6, vr:(Math.random()-.5)*.2, c:cols[(Math.random()*cols.length)|0]});
+  }
+  if (!starRAF) starRAF = requestAnimationFrame(drawStars);
+}
+function drawStar(p){
+  cx.save(); cx.translate(p.x,p.y); cx.rotate(p.rot); cx.globalAlpha = Math.max(0,p.life); cx.fillStyle = p.c;
+  cx.shadowColor = p.c; cx.shadowBlur = 8; cx.beginPath();
+  for (let i=0;i<10;i++){ const r = i%2 ? p.size*.42 : p.size; const a = i*Math.PI/5 - Math.PI/2; cx.lineTo(Math.cos(a)*r, Math.sin(a)*r); }
+  cx.closePath(); cx.fill(); cx.restore();
+}
+function drawStars(){
+  cx.clearRect(0,0,innerWidth,innerHeight);
+  parts = parts.filter(p => p.life > 0);
+  for (const p of parts){ p.x+=p.vx; p.y+=p.vy; p.vy+=.06; p.rot+=p.vr; p.life-=.022; drawStar(p); }
+  starRAF = parts.length ? requestAnimationFrame(drawStars) : null;
+}
+addEventListener('pointerdown', e => { pointerDown = true; ensureAudio(); spawn(e.clientX, e.clientY, 12, 3.2); lastStar = {x:e.clientX, y:e.clientY}; }, true);
+addEventListener('pointermove', e => { if (!pointerDown) return; if (Math.hypot(e.clientX-lastStar.x, e.clientY-lastStar.y) > 14) { spawn(e.clientX, e.clientY, 2, 1.2); lastStar = {x:e.clientX, y:e.clientY}; } }, true);
+addEventListener('pointerup', () => pointerDown = false, true);
+addEventListener('pointercancel', () => pointerDown = false, true);
+
+/* ---------- cassette SVG ---------- */
+let uid = 0;
+function cassetteSVG(t){
+  const u = ++uid, name = esc((t?.name || 'Untitled').slice(0,28)), color = t?.color || PALETTE[0], cover = t?.cover;
+  let teeth = ''; for (let k=0;k<6;k++) teeth += `<rect x="-1.5" y="-11" width="3" height="5" rx="1" transform="rotate(${k*60})" style="fill:#555"/>`;
+  const reel = cxp => `<g transform="translate(${cxp} 80)"><g class="reel"><circle r="11" style="fill:var(--c-hub)"/><circle r="4.5" style="fill:#333"/>${teeth}</g></g>`;
+  return `<svg class="cassette" viewBox="0 0 300 190" style="--c-s1:${color}" aria-label="${name}">
+  <defs><clipPath id="lc${u}"><rect x="20" y="14" width="260" height="114" rx="6"/></clipPath></defs>
+  <rect x="4" y="4" width="292" height="182" rx="12" style="fill:var(--c-body);stroke:rgba(0,0,0,.3)"/>
+  <g clip-path="url(#lc${u})">
+    <rect x="20" y="14" width="260" height="114" style="fill:var(--c-label)"/>
+    ${cover ? `<image href="${esc(cover)}" x="20" y="14" width="260" height="114" preserveAspectRatio="xMidYMid slice"/>
+      <rect x="20" y="14" width="260" height="32" style="fill:var(--c-label);opacity:.92"/>`
+      : `<rect x="20" y="112" width="260" height="7" style="fill:var(--c-s1)"/><rect x="20" y="121" width="260" height="7" style="fill:var(--c-s2)"/>
+         <line x1="30" y1="40" x2="270" y2="40" style="stroke:var(--c-ink);opacity:.25"/>`}
+    <text x="30" y="36" style="font-family:'Permanent Marker',cursive;font-size:17px;fill:var(--c-ink)">${name}</text>
+    <text x="270" y="36" text-anchor="end" style="font-family:'Permanent Marker',cursive;font-size:17px;fill:var(--c-s1)">A</text>
+  </g>
+  <rect x="76" y="50" width="148" height="60" rx="30" style="fill:var(--c-win);stroke:rgba(0,0,0,.4)"/>
+  <circle class="pack pl" cx="112" cy="80" r="24" style="fill:#3b2a20"/>
+  <circle class="pack pr" cx="188" cy="80" r="12" style="fill:#3b2a20"/>
+  ${reel(112)}${reel(188)}
+  <rect x="80" y="52" width="140" height="18" rx="9" style="fill:rgba(255,255,255,.08)"/>
+  <path d="M66 186 L82 146 L218 146 L234 186 Z" style="fill:var(--c-body2)"/>
+  <circle cx="100" cy="172" r="5" style="fill:rgba(0,0,0,.5)"/><circle cx="200" cy="172" r="5" style="fill:rgba(0,0,0,.5)"/>
+  <rect x="127" y="160" width="9" height="9" rx="2" style="fill:rgba(0,0,0,.45)"/><rect x="164" y="160" width="9" height="9" rx="2" style="fill:rgba(0,0,0,.45)"/>
+  ${[[14,14],[286,14],[14,176],[286,176],[150,156]].map(([x,y])=>`<circle cx="${x}" cy="${y}" r="3.5" style="fill:rgba(0,0,0,.3)"/>`).join('')}
+</svg>`;
+}
+function setPacks(p){
+  p = Math.min(1, Math.max(0, p||0));
+  const rMin = 12, rMax = 26;
+  const rl = Math.sqrt(rMin*rMin + (rMax*rMax - rMin*rMin)*(1-p));
+  const rr = Math.sqrt(rMin*rMin + (rMax*rMax - rMin*rMin)*p);
+  $$('.cassette .pl').forEach(c => c.setAttribute('r', rl.toFixed(2)));
+  $$('.cassette .pr').forEach(c => c.setAttribute('r', rr.toFixed(2)));
+}
+
+/* ---------- render ---------- */
+function renderCassettes(anim){
+  const slot = $('#slot'), big = $('#big');
+  if (current){
+    slot.innerHTML = cassetteSVG(current);
+    big.innerHTML = cassetteSVG(current) + '<div class="zones"><div data-z="prev"></div><div data-z="toggle"></div><div data-z="next"></div></div>';
+    if (anim) { slot.firstElementChild.classList.add('inserting'); }
+  } else {
+    slot.innerHTML = '<div class="hint">Drag a tape here<br>or tap one on the shelf</div>';
+    big.innerHTML = '<div class="nocass">No tape in the deck.<br>Tap 📼 Tapes to load one.</div>';
+  }
+  $$('.case').forEach(c => c.classList.toggle('current', current && c.dataset.id === current.id));
+}
+function filteredTapes(){
+  let list = db.tapes.slice();
+  if (shelfTab === 'recent') list = list.filter(t => t.lastPlayed).sort((a,b) => b.lastPlayed - a.lastPlayed);
+  if (query) list = list.filter(t => t.name.toLowerCase().includes(query.toLowerCase()));
+  return list;
+}
+function renderShelf(){
+  const list = filteredTapes();
+  $$('[data-grid]').forEach(g => {
+    g.parentElement.classList.toggle('editing', editing);
+    if (!db.tapes.length) {
+      g.innerHTML = `<div class="empty">📼<br><b>Your shelf is empty.</b><br>Tap <b>＋ Tape</b> and paste a YouTube Music playlist or album link.</div>`; return;
+    }
+    if (!list.length) { g.innerHTML = `<div class="empty">${shelfTab==='recent' ? 'Nothing played yet.' : 'No tapes match.'}</div>`; return; }
+    g.innerHTML = list.map(t => {
+      const bg = t.cover ? `background-image:url('${esc(t.cover)}')` : '';
+      return `<div class="case${current && current.id===t.id ? ' current':''}" data-id="${t.id}">
+        <div class="edit-badge">✎</div>
+        <div class="jcard" style="--tc:${t.color};--tc2:${t.color};${bg}">${t.cover ? '' : '<div class="bands"></div>'}<div class="jname">${esc(t.name)}</div></div>
+        ${t.count ? `<div class="meta">${t.count} trk</div>` : ''}
+      </div>`;
+    }).join('');
+  });
+}
+function setMarquee(el, text){
+  el.innerHTML = `<span>${esc(text)}</span>`;
+  requestAnimationFrame(() => { const sp = el.firstElementChild; el.classList.toggle('scroll', sp.scrollWidth > el.clientWidth + 2); });
+}
+
+/* ---------- themes & settings ---------- */
+function applyLook(){
+  html.dataset.theme = S.theme; html.dataset.whimsy = S.whimsy ? 'on' : 'off'; html.dataset.skin = S.skin;
+  document.querySelector('meta[name=theme-color]').content = S.theme === 'light' ? '#ece8e1' : '#121318';
+  $('#ytwrap').classList.toggle('show', !!S.showVideo);
+}
+function renderSettings(){
+  $$('#segTheme button').forEach(b => b.classList.toggle('on', b.dataset.v === S.theme));
+  $('#segSkin').innerHTML = Object.entries(SKINS).map(([k,c]) => `<button class="swatch${S.skin===k?' on':''}" data-skin="${k}" title="${k}" style="background:${c}"></button>`).join('');
+  $$('[data-s]').forEach(i => i.checked = !!S[i.dataset.s]);
+}
+$('#segTheme').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.theme = b.dataset.v; save(); applyLook(); renderSettings(); });
+$('#segSkin').addEventListener('click', e => { const b = e.target.closest('[data-skin]'); if (!b) return; S.skin = b.dataset.skin; save(); applyLook(); renderSettings(); });
+$$('[data-s]').forEach(i => i.addEventListener('change', () => { S[i.dataset.s] = i.checked; save(); applyLook(); updateHiss(); }));
+function openModal(id){ $(id).classList.add('open'); }
+function closeModal(id){ $(id).classList.remove('open'); }
+$$('.modal-bg').forEach(bg => bg.addEventListener('click', e => { if (e.target === bg) bg.classList.remove('open'); }));
+$('#btnSettings').onclick = $('#cSettings').onclick = () => { renderSettings(); $('#backupTxt').value=''; openModal('#setBg'); };
+$('#setClose').onclick = () => closeModal('#setBg');
+$('#bkCopy').onclick = async () => {
+  const txt = JSON.stringify({tapes: db.tapes});
+  $('#backupTxt').value = txt;
+  try { await navigator.clipboard.writeText(txt); toast('Backup copied'); } catch(e) { $('#backupTxt').select(); toast('Select the text and copy it'); }
+};
+$('#bkRestore').onclick = () => {
+  try {
+    const d = JSON.parse($('#backupTxt').value);
+    if (!Array.isArray(d.tapes)) throw 0;
+    const have = new Set(db.tapes.map(t => t.list || t.video));
+    let n = 0; d.tapes.forEach(t => { if (t && (t.list || t.video) && !have.has(t.list || t.video)) { db.tapes.push({...t, id: t.id || ('t'+Date.now()+n)}); n++; } });
+    save(); renderShelf(); toast(n ? `Restored ${n} tape${n>1?'s':''}` : 'Nothing new to restore');
+  } catch(e) { toast("That backup didn't read right"); }
+};
+
+/* ---------- add / edit tape ---------- */
+let editId = null;
+function parseLink(s){
+  s = (s||'').trim(); if (!s) return null;
+  try {
+    const u = new URL(s);
+    let list = u.searchParams.get('list');
+    if (!list) { const m = u.pathname.match(/\/browse\/VL([\w-]+)/); if (m) list = m[1]; }
+    let video = u.searchParams.get('v');
+    if (!video && /youtu\.be$/.test(u.hostname)) video = u.pathname.slice(1);
+    if (!video) { const m = u.pathname.match(/\/(?:shorts|embed|live)\/([\w-]{11})/); if (m) video = m[1]; }
+    if (/\/browse\/MPRE/.test(u.pathname) && !list) return {err:'album'};
+    return (list || video) ? {list, video} : null;
+  } catch(e) {
+    if (/^(PL|OLAK5uy_|RD|UU|FL)[\w-]+$/.test(s)) return {list:s};
+    if (/^[\w-]{11}$/.test(s)) return {video:s};
+    return null;
+  }
+}
+function openAdd(t){
+  editId = t ? t.id : null;
+  $('#addTitle').textContent = t ? 'Edit tape' : 'New tape';
+  $('#inLink').value = t ? (t.list ? `https://music.youtube.com/playlist?list=${t.list}` : `https://music.youtube.com/watch?v=${t.video}`) : '';
+  $('#inName').value = t ? t.name : '';
+  $('#addDelete').style.display = t ? '' : 'none';
+  $('#addErr').textContent = '';
+  openModal('#addBg'); setTimeout(() => (t ? $('#inName') : $('#inLink')).focus(), 50);
+}
+$('#btnAdd').onclick = $('#sheetAdd').onclick = () => openAdd(null);
+$('#addCancel').onclick = () => closeModal('#addBg');
+$('#addSave').onclick = () => {
+  const p = parseLink($('#inLink').value);
+  const err = m => { $('#addErr').textContent = m; buzz([20,40,20]); };
+  if (!p) return err("That doesn't look like a YouTube or YouTube Music link.");
+  if (p.err === 'album') return err('For albums, use Share → Copy link from the album page (the link should contain "list=").');
+  if (p.list === 'LM' || p.list === 'LL') return err("Liked Music only plays inside the YouTube Music app. Add those songs to a playlist and use that link.");
+  const name = $('#inName').value.trim() || `Tape ${db.tapes.length + 1}`;
+  if (editId) {
+    const t = db.tapes.find(x => x.id === editId);
+    const changed = (t.list||null) !== (p.list||null) || (t.video||null) !== (p.video||null);
+    Object.assign(t, {name, list: p.list || null, video: p.list ? null : p.video});
+    if (changed) { t.cover = null; t.count = null; t.pos = null; }
+    if (current && current.id === t.id) { renderCassettes(false); if (changed) cueTape(t); }
+  } else {
+    const t = {id:'t'+Date.now(), name, list: p.list || null, video: p.list ? null : p.video, color: PALETTE[db.tapes.length % PALETTE.length], added: Date.now(), lastPlayed: 0, pos: null, cover: null, count: null};
+    db.tapes.unshift(t);
+    toast('Tape on the shelf — drag it into the deck');
+  }
+  save(); renderShelf(); closeModal('#addBg'); sfx('clunk'); buzz(15);
+};
+$('#addDelete').onclick = () => {
+  const i = db.tapes.findIndex(x => x.id === editId); if (i < 0) return;
+  if (current && current.id === editId) eject();
+  db.tapes.splice(i,1); save(); renderShelf(); closeModal('#addBg'); toast('Tape removed');
+};
+
+/* ---------- shelf interactions (tap / drag into deck) ---------- */
+$$('[data-tabs]').forEach(tb => tb.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return; shelfTab = b.dataset.tab;
+  $$('[data-tabs] button').forEach(x => x.classList.toggle('on', x.dataset.tab === shelfTab)); renderShelf();
+}));
+$$('[data-search]').forEach(inp => inp.addEventListener('input', () => { query = inp.value; $$('[data-search]').forEach(o => { if (o!==inp) o.value = query; }); renderShelf(); }));
+$('[data-edit]').onclick = e => { editing = !editing; e.currentTarget.textContent = editing ? 'Done' : 'Edit'; renderShelf(); };
+
+let drag = null;
+document.addEventListener('pointerdown', e => {
+  const c = e.target.closest('.case'); if (!c) return;
+  drag = {el:c, id:c.dataset.id, x:e.clientX, y:e.clientY, active:false, pid:e.pointerId, ghost:null};
+});
+document.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.pid) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.active && !editing && !isCover && Math.hypot(dx,dy) > 10 && Math.abs(dx) > Math.abs(dy)) {
+    drag.active = true;
+    const r = drag.el.getBoundingClientRect();
+    const g = drag.el.cloneNode(true); g.classList.add('ghost'); g.style.width = r.width + 'px'; g.style.height = r.height + 'px';
+    drag.ox = e.clientX - r.left; drag.oy = e.clientY - r.top; drag.ghost = g; document.body.appendChild(g);
+    try { drag.el.setPointerCapture(e.pointerId); } catch(_) {}
+    buzz(10); sfx('tick');
+  }
+  if (drag.active) {
+    e.preventDefault();
+    drag.ghost.style.left = (e.clientX - drag.ox) + 'px'; drag.ghost.style.top = (e.clientY - drag.oy) + 'px';
+    $('#door').classList.toggle('hot', overDoor(e));
+  }
+}, {passive:false});
+function overDoor(e){ const r = $('#door').getBoundingClientRect(); return e.clientX > r.left-20 && e.clientX < r.right+20 && e.clientY > r.top-20 && e.clientY < r.bottom+20; }
+function endDrag(e, cancelled){
+  if (!drag || e.pointerId !== drag.pid) return;
+  const d = drag; drag = null;
+  $('#door').classList.remove('hot');
+  if (d.ghost) d.ghost.remove();
+  const t = db.tapes.find(x => x.id === d.id); if (!t) return;
+  if (d.active) { if (!cancelled && overDoor(e)) insertTape(t); return; }
+  if (cancelled) return;
+  if (Math.hypot(e.clientX-d.x, e.clientY-d.y) < 10) {
+    if (editing) { openAdd(t); return; }
+    insertTape(t);
+    if (isCover) closeModal('#sheetBg');
+  }
+}
+document.addEventListener('pointerup', e => endDrag(e, false));
+document.addEventListener('pointercancel', e => endDrag(e, true));
+
+/* ---------- deck logic ---------- */
+function savePos(){
+  if (!current || !playerReady) return;
+  try {
+    const idx = current.list ? Math.max(0, player.getPlaylistIndex()) : 0;
+    current.pos = {index: idx, time: player.getCurrentTime() || 0};
+    save();
+  } catch(e) {}
+}
+function cueTape(t){
+  if (!playerReady) { pendingCue = t; return; }
+  const pos = t.pos || {index:0, time:0};
+  try {
+    if (t.list) player.cuePlaylist({list:t.list, listType:'playlist', index:pos.index||0, startSeconds:pos.time||0});
+    else player.cueVideoById({videoId:t.video, startSeconds:pos.time||0});
+    player.setVolume(Math.round(S.volume/16*100));
+  } catch(e) { toast('Player hiccup — try again'); }
+}
+function insertTape(t){
+  if (current && current.id === t.id) { toast('Already in the deck'); return; }
+  if (current) savePos();
+  current = t; db.currentId = t.id; t.lastPlayed = Date.now(); save();
+  lastTitle = ''; setPlaying(false);
+  renderCassettes(true); renderShelf(); setPacks(0);
+  setMarquee($('#lcdTitle'), t.name.toUpperCase()); setMarquee($('#cTitle'), t.name); $('#cSub').textContent = 'Loading…';
+  sfx('clunk'); buzz([12,40,22]);
+  cueTape(t);
+  if (isCover) setTimeout(play, 600);
+  else toast(S.foldToPlay ? 'Fold the phone to play — or press PLAY' : 'Press PLAY');
+}
+function play(){
+  if (!current) { toast('Insert a tape first'); buzz([20,40,20]); return; }
+  if (!playerReady) { pendingPlay = true; toast('Warming up the deck…'); return; }
+  try { player.playVideo(); } catch(e) {}
+}
+let pendingPlay = false;
+function pause(){ if (playerReady) try { player.pauseVideo(); } catch(e) {} savePos(); }
+function eject(){
+  if (!current) return;
+  savePos(); pause();
+  const svg = $('#slot svg'); if (svg) svg.classList.add('ejecting');
+  sfx('clunk'); buzz([25,30,10]);
+  setTimeout(() => {
+    current = null; db.currentId = null; save();
+    try { player && player.stopVideo(); } catch(e) {}
+    setPlaying(false); renderCassettes(false); renderShelf(); resetDisplays();
+  }, 330);
+}
+function prev(){ if (!playerReady || !current) return; try { if (player.getCurrentTime() > 3 || !current.list) player.seekTo(0, true); else player.previousVideo(); } catch(e) {} }
+function next(){ if (!playerReady || !current) return; try { if (current.list) player.nextVideo(); } catch(e) {} }
+function resetDisplays(){
+  setMarquee($('#lcdTitle'), 'NO TAPE'); $('#lcdTrk').textContent = '--/--'; $('#lcdTime').textContent = '00:00';
+  setMarquee($('#cTitle'), 'No tape'); $('#cSub').textContent = 'Unfold to pick a tape, or tap Tapes';
+  $('#cTrk').textContent = '--/--'; $('#cTime').textContent = '00:00'; $('#cBar').style.width = '0';
+}
+let wake = null;
+async function setWake(on){
+  try {
+    if (on && !wake && 'wakeLock' in navigator && document.visibilityState === 'visible') { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => wake = null); }
+    else if (!on && wake) { await wake.release(); wake = null; }
+  } catch(e) {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && playing) setWake(true); if (document.visibilityState === 'hidden') savePos(); });
+function setPlaying(b){
+  playing = b; html.classList.toggle('playing', b);
+  $$('[data-k=play]').forEach(k => k.classList.toggle('down', b));
+  $('#cPlayIc').textContent = b ? '❚❚' : '▶';
+  updateHiss(); setWake(b);
+}
+
+/* keys: tap, plus hold FF/REW to scrub */
+let hold = null;
+function keyAction(k){
+  sfx('click'); buzz(12);
+  if (k === 'play') play();
+  else if (k === 'stop') pause();
+  else if (k === 'playpause') playing ? pause() : play();
+  else if (k === 'eject') eject();
+  else if (k === 'ff') next();
+  else if (k === 'rew') prev();
+}
+document.addEventListener('pointerdown', e => {
+  const key = e.target.closest('.key'); if (!key) return;
+  const k = key.dataset.k;
+  if (k === 'ff' || k === 'rew') {
+    hold = {k, scrub:false, t:setTimeout(() => {
+      if (!playerReady || !current) return;
+      hold.scrub = true; html.classList.add(k); sfx('click'); buzz(20);
+      hold.iv = setInterval(() => { try { player.seekTo(Math.max(0, player.getCurrentTime() + (k==='ff' ? 4 : -4)), true); } catch(_) {} }, 160);
+    }, 380)};
+  }
+});
+document.addEventListener('pointerup', e => {
+  const key = e.target.closest('.key');
+  if (hold) { clearTimeout(hold.t); clearInterval(hold.iv); html.classList.remove('ff','rew'); const h = hold; hold = null; if (h.scrub) return; }
+  if (key) keyAction(key.dataset.k);
+});
+document.addEventListener('pointercancel', () => { if (hold) { clearTimeout(hold.t); clearInterval(hold.iv); html.classList.remove('ff','rew'); hold = null; } });
+$('#big').addEventListener('click', e => {
+  const z = e.target.closest('[data-z]'); if (!z) return;
+  sfx('click'); buzz(12);
+  if (z.dataset.z === 'prev') prev(); else if (z.dataset.z === 'next') next(); else (playing ? pause() : play());
+});
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input,textarea')) return;
+  if (e.code === 'Space') { e.preventDefault(); playing ? pause() : play(); }
+  if (e.code === 'ArrowRight') next(); if (e.code === 'ArrowLeft') prev();
+});
+
+/* volume wheel: 16 clicking detents */
+(() => {
+  const w = $('#wheel'); let y0 = null, acc = 0, off = 0;
+  const show = () => { $('#volLbl').textContent = 'VOL ' + String(S.volume).padStart(2,'0'); };
+  show();
+  w.addEventListener('pointerdown', e => { y0 = e.clientY; acc = 0; w.setPointerCapture(e.pointerId); });
+  w.addEventListener('pointermove', e => {
+    if (y0 === null) return;
+    const dy = y0 - e.clientY; y0 = e.clientY; acc += dy; off -= dy; w.style.setProperty('--off', off + 'px');
+    while (Math.abs(acc) >= 12) {
+      const dir = Math.sign(acc); acc -= dir*12;
+      const nv = Math.min(16, Math.max(0, S.volume + dir));
+      if (nv !== S.volume) { S.volume = nv; sfx('tick'); buzz(6); show(); if (playerReady) try { player.setVolume(Math.round(nv/16*100)); } catch(_) {} }
+    }
+  });
+  const up = () => { if (y0 !== null) { y0 = null; save(); } };
+  w.addEventListener('pointerup', up); w.addEventListener('pointercancel', up);
+})();
+
+/* ---------- fold detection ---------- */
+let posture = (navigator.devicePosture && navigator.devicePosture.type) || 'continuous';
+const innerScreen = () => Math.min(innerWidth, innerHeight) >= 560;
+function computeCover(){ return forceCover || !innerScreen() || posture === 'folded'; }
+function updateMode(userTriggered){
+  const c = computeCover();
+  $('#cExit').style.display = forceCover ? '' : 'none';
+  if (c === isCover && inited) return;
+  const was = isCover; isCover = c; html.classList.toggle('cover', c);
+  if (!inited) return;
+  if (c && !was) { // folded
+    if (S.foldToPlay && current && !playing) { sfx('clunk'); buzz([15,40,15]); play(); }
+  } else if (!c && was) { // unfolded
+    closeModal('#sheetBg');
+    if (S.pauseOnUnfold && playing) pause();
+  }
+  requestAnimationFrame(() => { setMarquee($('#lcdTitle'), $('#lcdTitle').textContent); setMarquee($('#cTitle'), $('#cTitle').textContent); });
+}
+let rT; addEventListener('resize', () => { sizeCanvas(); clearTimeout(rT); rT = setTimeout(() => updateMode(false), 120); });
+if (navigator.devicePosture) navigator.devicePosture.addEventListener('change', () => { posture = navigator.devicePosture.type; updateMode(false); });
+$('#btnFold').onclick = () => { forceCover = true; updateMode(true); };
+$('#cExit').onclick = () => { forceCover = false; updateMode(true); };
+$('#cTapes').onclick = () => { renderShelf(); openModal('#sheetBg'); };
+$('#sheetClose').onclick = () => closeModal('#sheetBg');
+$('#cFull').onclick = async () => { try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); } catch(e) { toast('Fullscreen not available here'); } };
+
+/* ---------- YouTube player ---------- */
+let lastTitle = '', tickN = 0;
+window.onYouTubeIframeAPIReady = () => {
+  const vars = {playsinline:1, controls:0, rel:0, iv_load_policy:3, disablekb:1, fs:0};
+  if (/^https?:/.test(location.protocol)) vars.origin = location.origin;
+  player = new YT.Player('yt', {width:220, height:220, playerVars:vars, events:{
+    onReady: () => {
+      playerReady = true; $('#banner').classList.remove('show');
+      try { player.setVolume(Math.round(S.volume/16*100)); } catch(e) {}
+      const t = pendingCue || current; pendingCue = null;
+      if (t) cueTape(t);
+      if (pendingPlay) { pendingPlay = false; setTimeout(play, 700); }
+    },
+    onStateChange: e => {
+      const st = e.data;
+      if (st === 1) { setPlaying(true); if (current) { current.lastPlayed = Date.now(); save(); } }
+      else if (st === 2 || st === 5 || st === -1) setPlaying(false);
+      else if (st === 0) {
+        setPlaying(false);
+        let list = null, idx = 0; try { list = player.getPlaylist(); idx = player.getPlaylistIndex(); } catch(_) {}
+        if (!list || idx >= list.length - 1) {
+          sfx('clunk'); buzz([30,60,30]); toast('End of the tape — rewound to the start');
+          if (current) { current.pos = {index:0, time:0}; save(); cueTape(current); }
+        }
+      }
+    },
+    onError: e => {
+      const c = e.data;
+      if (c === 100 || c === 101 || c === 150) {
+        let more = false; try { const l = player.getPlaylist(); more = l && player.getPlaylistIndex() < l.length - 1; } catch(_) {}
+        if (more) { toast("This song won't play outside YouTube — skipping"); setTimeout(next, 900); }
+        else toast("Can't play this here. Check the playlist is Public or Unlisted.");
+      } else if (c === 2) toast("That link didn't work — edit the tape and re-paste it");
+      else toast('Playback error (' + c + ')');
+    }
+  }});
+};
+setInterval(() => {
+  if (!playerReady || !current) return;
+  let t=0, dur=0, idx=0, list=null, vd=null;
+  try { t = player.getCurrentTime()||0; dur = player.getDuration()||0; list = player.getPlaylist(); idx = Math.max(0, player.getPlaylistIndex()); vd = player.getVideoData(); } catch(e) { return; }
+  const n = current.list ? (list ? list.length : 0) : 1;
+  const p = n ? (idx + (dur ? t/dur : 0)) / n : 0;
+  setPacks(p);
+  const trk = n ? `${String(idx+1).padStart(2,'0')}/${String(n).padStart(2,'0')}` : '--/--';
+  $('#lcdTrk').textContent = trk; $('#cTrk').textContent = 'TRACK ' + trk;
+  $('#lcdTime').textContent = fmt(t); $('#cTime').textContent = fmt(t) + (dur ? ' / ' + fmt(dur) : '');
+  $('#cBar').style.width = (p*100).toFixed(1) + '%';
+  if (vd && vd.title && vd.title !== lastTitle) {
+    lastTitle = vd.title;
+    setMarquee($('#lcdTitle'), vd.title.toUpperCase()); setMarquee($('#cTitle'), vd.title);
+    $('#cSub').textContent = (vd.author ? vd.author.replace(/ - Topic$/,'') + ' · ' : '') + current.name;
+  }
+  let dirty = false;
+  if (!current.cover && vd && vd.video_id) { current.cover = `https://i.ytimg.com/vi/${vd.video_id}/hqdefault.jpg`; dirty = true; renderCassettes(false); setPacks(p); }
+  if (current.list && list && current.count !== list.length) { current.count = list.length; dirty = true; }
+  if (dirty) { save(); renderShelf(); }
+  if (playing && ++tickN % 12 === 0) savePos();
+}, 400);
+addEventListener('pagehide', savePos);
+
+/* ---------- boot ---------- */
+applyLook();
+isCover = computeCover(); html.classList.toggle('cover', isCover);
+renderShelf(); renderCassettes(false);
+if (current) { setMarquee($('#lcdTitle'), current.name.toUpperCase()); setMarquee($('#cTitle'), current.name); $('#cSub').textContent = 'Ready — press play'; }
+else resetDisplays();
+inited = true;
+if (location.protocol === 'file:') { const b = $('#banner'); b.textContent = 'YouTube only plays when this page is opened from a web address (e.g. GitHub Pages), not as a local file.'; b.classList.add('show'); }
+const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api';
+s.onerror = () => { const b = $('#banner'); b.textContent = "Couldn't reach YouTube — check your connection."; b.classList.add('show'); };
+document.head.appendChild(s);
+setTimeout(() => { if (!playerReady && location.protocol !== 'file:') { const b = $('#banner'); if (!b.classList.contains('show')) { b.textContent = 'Still connecting to YouTube…'; b.classList.add('show'); } } }, 9000);
+})();
+</script>
+</body>
+</html>
